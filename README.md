@@ -1,3 +1,3 @@
 # MolLVAE
-LVAE for molecular generation task. A project for Deep Generative Models 2020 spring.test2
+LVAE for molecular generation task. A project for Deep Generative Models 2020 spring.
 
