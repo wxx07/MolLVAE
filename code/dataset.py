@@ -81,7 +81,8 @@ class StringDataset:
         lengths = [lengths[i] for i in order]
         
         with_bos_eos = torch.nn.utils.rnn.pad_sequence(
-            with_bos_eos, padding_value=self.vocab.pad
+            with_bos_eos, padding_value=self.vocab.pad,\
+            batch_first=True
         )
 
         if return_data:
