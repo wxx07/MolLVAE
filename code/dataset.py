@@ -13,6 +13,8 @@ import pickle,os
 
 from moses import CharVocab
 
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 class StringDataset:
     def __init__(self, vocab, data):
         """
@@ -117,13 +119,14 @@ class DatasetSplit:
         split_raw = self.get_smiles()
         
         ## load vocab generated from training set
-        if split=="train" and not os.path.exists("../data/train_vocab.pkl"):
+        train_vocab_path = base_dir + "/data/train_vocab.pkl"
+        if split=="train" and not os.path.exists(train_vocab_path):
             self._vocab = CharVocab.from_data(split_raw) # [to be done] load from train_vocab
-            with open("../data/train_vocab.pkl","wb") as fo:
+            with open(train_vocab_path, "wb") as fo:
                 pickle.dump(self._vocab, fo)
         elif split in ["valid", "test"]:
-            assert os.path.exists("../data/train_vocab.pkl"), "Dont have train_vocab"
-            with open("../data/train_vocab.pkl","rb") as fi:
+            assert os.path.exists(train_vocab_path), "Dont have train_vocab"
+            with open(train_vocab_path,"rb") as fi:
                 self._vocab = pickle.load(fi)
             
         
