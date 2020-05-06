@@ -72,3 +72,7 @@ class LSTM_decoder(nn.Module):
         )
         
         return recon_loss
+    
+    def count_params(self):
+        
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
