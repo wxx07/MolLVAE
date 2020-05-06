@@ -38,7 +38,6 @@ class LSTM_decoder(nn.Module):
                             dropout=dropout if decoder_num_layers > 1 else 0 # dropout layer follows lstm layer
                            )
         
-    #def forward(self, padded_x, lengths, z):
     def forward(self, batch, z):
         
         
