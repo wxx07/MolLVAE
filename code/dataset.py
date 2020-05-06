@@ -142,7 +142,7 @@ class DatasetSplit:
         return pd.read_csv(self.file_path, usecols=["smiles"], squeeze=True).astype(str).tolist()
         
     
-    def get_dataloader(self, batch_size=512):
+    def get_dataloader(self, batch_size=512, shuffle=True):
         """
         Return:
             torch.utils.data.Dataloader: [object], loop over shuffled batches  
@@ -159,7 +159,7 @@ class DatasetSplit:
         
         return DataLoader(
                         self.split_dataset, batch_size=batch_size,
-                        shuffle=True, collate_fn=self.split_dataset.default_collate
+                        shuffle=shuffle, collate_fn=self.split_dataset.default_collate
                         )# reuse from epoch to epoch
         
     
