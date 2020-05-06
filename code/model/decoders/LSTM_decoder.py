@@ -11,31 +11,30 @@ import torch.nn.functional as F
 
 
 class LSTM_decoder(nn.Module):
-    def __init__(self, vocab, embed_size, latent_size,\
-                 decoder_hidden_size, decoder_num_layers,\
-                 dropout
+    def __init__(self, vocab, embed_layer, config,
+                 latent_size
                 ):
         super(LSTM_decoder, self).__init__()
         
-        ## embedding layer
-        n_vocab, d_emb, self.pad = len(vocab.i2c), embed_size, vocab.pad
-        self.x_emb = nn.Embedding(n_vocab, d_emb, self.pad)
+        ## embedding layer: share with encoder
+        n_vocab, d_emb, self.pad = len(vocab.i2c), config.emb_sz, vocab.pad
+        self.x_emb = embed_layer
         
         ## middle layer
-        self.d_z = latent_size
-        self.d_d_h = decoder_hidden_size
+        self.d_z = latent_size #! [to be done] change to config form
+        self.d_d_h = config.dec_hid_sz
         self.map_z2hc = nn.Linear(self.d_z, self.d_d_h*2) # h_0, c_0 should be of same shape
         
         ## output layer
         self.decoder_fc = nn.Linear(self.d_d_h, n_vocab)
         
         ## LSTM layer
-        self.n_layer = decoder_num_layers
+        self.n_layer = config.dec_n_layer
         self.lstm = nn.LSTM(d_emb + self.d_z,\
                             self.d_d_h,\
                             num_layers=self.n_layer,\
                             batch_first=True,\
-                            dropout=dropout if decoder_num_layers > 1 else 0 # dropout layer follows lstm layer
+                            dropout=config.dropout if self.n_layer > 1 else 0 # dropout layer follows lstm layer
                            )
         
     def forward(self, batch, z):
