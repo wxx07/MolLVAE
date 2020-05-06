@@ -121,12 +121,14 @@ class DatasetSplit:
         
         ## load vocab generated from training set
         train_vocab_path = base_dir + "/data/train_vocab.pkl"
-        if split=="train" and not os.path.exists(train_vocab_path):
-            self._vocab = CharVocab.from_data(split_raw) # [to be done] load from train_vocab
-            with open(train_vocab_path, "wb") as fo:
-                pickle.dump(self._vocab, fo)
+        if split=="train":
+            self._vocab = CharVocab.from_data(split_raw)
+            if not os.path.exists(train_vocab_path):
+                with open(train_vocab_path, "wb") as fo:
+                    pickle.dump(self._vocab, fo)
+                
         elif split in ["valid", "test"]:
-            assert os.path.exists(train_vocab_path), "Dont have train_vocab"
+            assert os.path.exists(train_vocab_path), "Cant find train_vocab if never get train_split"
             with open(train_vocab_path,"rb") as fi:
                 self._vocab = pickle.load(fi)
             
@@ -140,7 +142,7 @@ class DatasetSplit:
         return pd.read_csv(self.file_path, usecols=["smiles"], squeeze=True).astype(str).tolist()
         
     
-    def get_dataloader(self, batch_size=512):
+    def get_dataloader(self, batch_size=512, shuffle=True):
         """
         Return:
             torch.utils.data.Dataloader: [object], loop over shuffled batches  
@@ -157,7 +159,7 @@ class DatasetSplit:
         
         return DataLoader(
                         self.split_dataset, batch_size=batch_size,
-                        shuffle=True, collate_fn=self.split_dataset.default_collate
+                        shuffle=shuffle, collate_fn=self.split_dataset.default_collate
                         )# reuse from epoch to epoch
         
     
