@@ -1,16 +1,17 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence,pad_packed_sequence,pad_sequence
+
 
 class LSTM_encoder(torch.nn.Module):
-    def __init__(self,input_size,hidden_size,num_layers,vocab_size,batch_size,sorted_seq=False,
-                 bidirectional=False,):
+    def __init__(self,embed_size,hidden_size,num_layers,vocab,batch_size,sorted_seq=True,
+                 bidirectional=False):
         '''
-        :param input_size:  Input size of LSTM
+        :param embed_size:  Input size of LSTM
         :param hidden_size: Hidden size of LSTM
         :param num_layers: Number of recurrent layers.
-        :param vocab_size: Vocabulary size of embedding
+        :param vocab: Vocabulary of embedding
         :param batch_size: Batch size
         :param sorted_seq: If the input_seq has been sorted,set this param to True and give
                            the seq and lengths when forward function is called. Default: False
@@ -19,15 +20,18 @@ class LSTM_encoder(torch.nn.Module):
         super(LSTM_encoder,self).__init__()
         self.batch_size = batch_size
         self.sorted_seq = sorted_seq
-        self.embedding = nn.Embedding(vocab_size,input_size)
-        self.lstm = nn.LSTM(input_size,hidden_size,num_layers,bidirectional = bidirectional)
+        self.pad = vocab.pad
+        n_vocab = len(vocab.i2c)
+        self.embedding = nn.Embedding(n_vocab,embed_size,padding_idx=self.pad)
+        self.lstm = nn.LSTM(embed_size,hidden_size,num_layers,bidirectional = bidirectional)
 
     def forward(self,seq,lengths=None):
         if self.sorted_seq:
-            embeds = self.embedding(seq)
-            seq = pack_padded_sequence(embeds, lengths=list(lengths), batch_first=True)
+            embeds = [self.embedding(i) for i in seq]
+            seq = pad_sequence(embeds, batch_first=True, padding_value=self.pad)
+            seq = pack_padded_sequence(seq, lengths=list(lengths), batch_first=True,)
             output, (h_n, c_n) = self.lstm(seq)
-            output, _ = pad_packed_sequence(output, batch_first=True)
+            output, _ = pad_packed_sequence(output,batch_first=True)
             h_n = h_n[-(1 + int(self.lstm.bidirectional)):]
             h = torch.cat(h_n.split(1), dim=-1).squeeze(0)
         else:
@@ -38,8 +42,9 @@ class LSTM_encoder(torch.nn.Module):
             seq_sort = seq.index_select(0, idx_sort)
             lengths_sort = lengths.index_select(0, idx_sort)
             # forward
-            embeds = self.embedding(seq_sort)
-            seq_sort = pack_padded_sequence(embeds,lengths=list(lengths_sort),batch_first=True)
+            embeds = [self.embedding(i) for i in seq_sort]
+            seq_sort = pad_sequence(embeds, batch_first=True, padding_value=self.pad)
+            seq_sort = pack_padded_sequence(seq_sort,lengths=list(lengths_sort),batch_first=True)
             output,(h_n,c_n) = self.lstm(seq_sort)
             output,_ = pad_packed_sequence(output,batch_first=True)
             h_n = h_n[-(1+int(self.lstm.bidirectional)):]
@@ -53,5 +58,6 @@ class LSTM_encoder(torch.nn.Module):
         length = []
         a = x.numpy()
         for i in range(x.size()[0]):
-            length.append(np.size(a[i].nonzero()))
+            length.append(len(a[i])-np.sum(a[i]==self.pad))
         return torch.tensor(length,dtype=torch.float32)
+
