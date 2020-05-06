@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 class LSTM_decoder(nn.Module):
     def __init__(self, vocab, embed_size, latent_size,\
-                 deocder_hidden_size, decoder_num_layers,\
+                 decoder_hidden_size, decoder_num_layers,\
                  dropout
                 ):
         super(LSTM_decoder, self).__init__()
@@ -23,7 +23,7 @@ class LSTM_decoder(nn.Module):
         
         ## middle layer
         self.d_z = latent_size
-        self.d_d_h = deocder_hidden_size
+        self.d_d_h = decoder_hidden_size
         self.map_z2hc = nn.Linear(self.d_z, self.d_d_h*2) # h_0, c_0 should be of same shape
         
         ## output layer
