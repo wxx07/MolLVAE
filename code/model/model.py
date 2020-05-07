@@ -26,11 +26,7 @@ class LVAE(torch.nn.Module):
         self.batch_size = config.LVAE_batch_size
         self.z_reverse_size = list(reversed(config.LVAE_z_size))
         self.vocab = vocab
-        # self.encoder_param = encoder_param
-        # self.decoder_param = decoder_param
         self.embedding = nn.Embedding(len(self.vocab.i2c),config.embed_size,self.vocab.pad)
-        # self.encoder_param.param.update({'embed_layer': self.embedding})
-        # self.decoder_param.param.update({'embed_layer': self.embedding})
         if config.enc_type == 'lstm':
             self.encoder = LSTM_encoder(self.embedding,self.vocab,config)
             self.LVAE_input_size = config.enc_hidden_size * (1 + int(config.enc_bidirectional))
