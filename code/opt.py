@@ -62,7 +62,7 @@ def get_parser(parser=None):
                             help="The dimension of each level latent z")
     model_args.add_argument("--ladder_z2z_layer_size",
                             type=list, default=[8,16,32,64],
-                            help="the z2z layer size in to down step")
+                            help="The z2z layer size in top down step")
 
     
     
