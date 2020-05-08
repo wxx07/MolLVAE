@@ -87,9 +87,9 @@ class StringDataset:
 
         if return_data:
             data = np.array(data)[order]
-            return with_bos_eos, lengths, data
+            return (with_bos_eos, lengths, data)
         
-        return with_bos_eos, lengths
+        return (with_bos_eos, lengths)
 
  
     
