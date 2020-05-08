@@ -16,7 +16,7 @@ class LVAE(torch.nn.Module):
         self.z_reverse_size = list(reversed(config.ladder_z_size))
         self.vocab = vocab
         # Word embeddings layer
-        self.embedding = nn.Embedding(len(self.vocab.i2c),config.embed_size,self.vocab.pad)
+        self.embedding = nn.Embedding(len(self.vocab.i2c),config.emb_sz,self.vocab.pad)
 
         # Encoder
         if config.enc_type == 'lstm':
@@ -225,5 +225,3 @@ class MLP(torch.nn.Module):
         mu = self.mu(layer2)
         var = F.softplus(self.var(layer2)) + 1e-8
         return layer2,mu,var
-
-

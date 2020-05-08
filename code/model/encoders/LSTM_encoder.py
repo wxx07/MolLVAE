@@ -9,9 +9,9 @@ class LSTM_encoder(torch.nn.Module):
         self.sorted_seq = config.enc_sorted_seq
         self.pad = vocab.pad
         self.embedding = embed_layer
-        self.lstm = nn.LSTM(config.embed_size,config.enc_hidden_size,batch_first=True,
+        self.lstm = nn.LSTM(config.emb_sz,config.enc_hidden_size,batch_first=True,
                             num_layers=config.enc_num_layers,bidirectional = config.enc_bidirectional,
-                            dropout= config.enc_dropout if config.enc_num_layers > 1 else 0)
+                            dropout= config.dropout if config.enc_num_layers > 1 else 0)
 
     def forward(self,batch):
         if self.sorted_seq:
