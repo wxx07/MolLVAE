@@ -56,16 +56,68 @@ def get_parser(parser=None):
     train_args.add_argument("--n_epoch",
                             type=int, default=100,
                             help="Training epoches")
+    train_args.add_argument("--clip_grad",
+                            type=int, default=50,
+                            help="Clip gradients to this value")
+    train_args.add_argument("--loss_buf_sz",
+                            type=int, default=1000,
+                            help="Buffer losses for the last m batches")
+    train_args.add_argument("--log_path",
+                            type=str,
+                            help="/path/to/experiment/log.csv")
+    
     
     ## cosine annealing lr with restart
     train_args.add_argument("--lr_anr_type",
-                            type=str, choices=["SGDR"],
+                            type=str, choices=["SGDR", "const"],
+                            default="const",
                             help='choose lr annealer in \
                             "cosine annealing with restart" | \
+                            "constant lr" | \
                             ...')
     train_args.add_argument("--lr_start",
-                            type=float, default=1e-3,
-                            help="Max lr in annealing")
+                            type=float, default=3*1e-4,
+                            help="Initial and max lr in annealing")
+    train_args.add_argument("--lr_end",
+                            type=float, default=3*1e-4,
+                            help="Final and min lr in annealing")
+    train_args.add_argument("--lr_period",
+                            type=int, default=10,
+                            help="Epoches before next restart")
+    train_args.add_argument("--lr_n_restarts",
+                            type=int, default=10,
+                            help="Times of restart in annealing")
+    train_args.add_argument("--lr_mult_coeff",
+                            type=int, default=1,
+                            help="Mult coefficient for period increment")
+    
+    
+    
+    
+    
+    
+    ## linear increasing KL loss weight annealer
+    # loss = kl_weight * kl_loss + rec_loss
+    # annealing startpoint not necessary at the first epoch 
+    train_args.add_argument("--kl_anr_type",
+                            type=str, choices=["linear_inc", "const"],
+                            default="const",
+                            help='choose kl annealer in \
+                            "linear increasing" | \
+                            "constant lr" | \
+                            ...')
+    train_args.add_argument("--kl_e_start",
+                            type=int, default=1,
+                            help="Epoch start increasing KL weight")
+    train_args.add_argument("--kl_w_start",
+                            type=float, default=1.,
+                            help="Initial KL weight")
+    train_args.add_argument("--kl_w_end",
+                            type=float, default=1.,
+                            help="Final KL weight")
+    
+    
+    
     
     return parser
     
@@ -99,6 +151,15 @@ def add_expr_parser(parser):
     parser.add_argument("--test_load",
                         type=str, default="../data/valid.csv",
                         help="File path to test.csv")
+    
+    parser.add_argument("--model_save",
+                        type=str,
+                        help="/path/to/trained/model.pt")
+    parser.add_argument("--save_frequency",
+                        type=int, default=10,
+                        help="Every n epoches to save")
+    
+    
     
     return parser
     
