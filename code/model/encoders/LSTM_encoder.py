@@ -47,4 +47,3 @@ class LSTM_encoder(torch.nn.Module):
         for i in range(x.size()[0]):
             length.append(len(a[i])-np.sum(a[i]==self.pad))
         return torch.tensor(length,dtype=torch.float32)
-

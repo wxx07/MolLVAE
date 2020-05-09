@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from code.model.decoders.LSTM_decoder import LSTM_decoder
 from code.model.encoders.LSTM_encoder import LSTM_encoder
 
-
 class LVAE(torch.nn.Module):
     def __init__(self,vocab,config):
         super(LVAE,self).__init__()
@@ -39,107 +38,116 @@ class LVAE(torch.nn.Module):
         self.top_down_layers = []
         self.bottom_up_layers = []
 
-        #get a list contain bottom up layers,which used to generate z_mu_q_d and z_var_q_d
+        #get a list contain bottom up layers,which used to generate z_mu_q_d and z_log_var_q_d
         for i in range(len(self.d_size)):
             if i == 0:
-                self.bottom_up_layers.append(MLP(in_size=self.ladder_input_size,layer_size=self.d_size[i],out_size=self.z_size[i]))
+                exec('self.bottom_up_layer{}=MLP(in_size=self.ladder_input_size,layer_size=self.d_size[i],out_size=self.z_size[i])'.format(i))
+                exec('self.bottom_up_layers.append(self.bottom_up_layer{})'.format(i))
             else:
-                self.bottom_up_layers.append(MLP(in_size=self.d_size[i-1],layer_size=self.d_size[i],out_size=self.z_size[i]))
+                exec('self.bottom_up_layer{}=MLP(in_size=self.d_size[i-1],layer_size=self.d_size[i],out_size=self.z_size[i])'.format(i))
+                exec('self.bottom_up_layers.append(self.bottom_up_layer{})'.format(i))
 
-        #get a list contain top down layers,which used to generate z_mu_p and z_var_p
+        #get a list contain top down layers,which used to generate z_mu_p and z_log_var_p
         for i in range(len(self.z_reverse_size)-1):
-            self.top_down_layers.append(MLP(in_size=self.z_reverse_size[i],layer_size=self.z2z_layer_size[i],out_size=self.z_reverse_size[i+1]))
+            exec('self.top_down_layer{}=MLP(in_size=self.z_reverse_size[i],layer_size=self.z2z_layer_size[i],out_size=self.z_reverse_size[i+1])'.format(i))
+            exec('self.top_down_layers.append(self.top_down_layer{})'.format(i))
+
+    def device(self):
+        return next(self.parameters()).device
 
     def bottom_up(self,input):
         '''
-        Do the bottom up step and get z_mu_q_d and z_var_q_d
+        Do the bottom up step and get z_mu_q_d and z_log_var_q_d
 
         :param: input of ladder part,size=(batch_size * ladder_input_size)
-        :return:two lists: z_mu_q_d ,z_var_q_d
+        :return:two lists: z_mu_q_d ,z_log_var_q_d
         '''
         z_mu_q_d = []
-        z_var_q_d = []
+        z_log_var_q_d = []
         for i in range(len(self.d_size)):
             if i == 0:
-                nn, mu_q_d, var_q_d = self.bottom_up_layers[i](input)
+                nn, mu_q_d, log_var_q_d = self.bottom_up_layers[i](input)
                 z_mu_q_d.append(mu_q_d)
-                z_var_q_d.append(var_q_d)
+                z_log_var_q_d.append(log_var_q_d)
             else:
-                nn, mu_q_d, var_q_d = self.bottom_up_layers[i](nn)
+                nn, mu_q_d, log_var_q_d = self.bottom_up_layers[i](nn)
                 z_mu_q_d.append(mu_q_d)
-                z_var_q_d.append(var_q_d)
-        return z_mu_q_d, z_var_q_d
+                z_log_var_q_d.append(log_var_q_d)
+        return z_mu_q_d, z_log_var_q_d # shape:[[batch_size * z_size[0]],[batch_size * z_size[1]],....,[batch_size * z_size[-1]]]
 
-    def top_down(self, z_sample, z_mu_p, z_var_p):
+    def top_down(self, z_sample, z_mu_p, z_log_var_p):
         '''
-        Do top down step and get z_mu_p,z_var_p, also return samples of each level z
+        Do top down step and get z_mu_p,z_log_var_p, also return samples of each level z
 
         :param z_sample: only have the samples of top z
         :param z_mu_p: only have the z_mu_p of top z (mu = 0)
-        :param z_var_p: only have the z_var_p of top z (var = 1)
-        :return three list :z_mu_p,z_var_p,z_sample
+        :param z_log_var_p: only have the z_log_var_p of top z (var = 1)
+        :return three list :z_mu_p,z_log_var_p,z_sample
         '''
         for i in range(len(self.z_reverse_size) - 1):
-            _, mu_p, var_p = self.top_down_layers[i](z_sample[i])
-            z_sample.append(self.sample_z(mu_p, var_p))
+            _, mu_p, log_var_p = self.top_down_layers[i](z_sample[i])
+            z_sample.append(self.sample_z(mu_p, log_var_p))
             z_mu_p.append(mu_p)
-            z_var_p.append(var_p)
-        return list(reversed(z_mu_p)), list(reversed(z_var_p)), list(reversed(z_sample))
+            z_log_var_p.append(log_var_p)
+        #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
+        return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
 
-    def sample_z(self, mu, var):
+    def sample_z(self, mu, log_var):
         '''
         Sampling z ~ p(z)= N(mu,var)
         :return: sample of z
         '''
-        stddev = var ** 0.5
-        out = mu + stddev * torch.randn(mu.size())
+        stddev = torch.exp(log_var) ** 0.5
+        out = mu + stddev * torch.randn(mu.size()).to(self.device())
         return out
 
-    def Gaussian_update(self, mu_q_d, var_q_d, mu_p, var_p):
+    def Gaussian_update(self, mu_q_d, log_var_q_d, mu_p, log_var_p):
         '''
         Combine mu_q_d,var_q_d and mu_p,var_p to generate mu_q,var_q
         :return two tensor: mu_q,var_q
         '''
+        var_q_d,var_p = torch.exp(log_var_q_d),torch.exp(log_var_p)
         x = torch.pow(var_q_d, -1)
         y = torch.pow(var_p, -1)
-        sigma = torch.pow(torch.add(x, y), -1)
-        var = torch.pow(sigma, 2)
-        mu = torch.add(mu_q_d*x, mu_p*y) * sigma
-        return mu, var
+        var = torch.pow(torch.add(x, y), -1)
+        mu = torch.add(mu_q_d*x, mu_p*y) * var
+        return mu, torch.log(var)
 
-    def KL_loss(self,q_mu,q_var,p_mu,p_var):
-        kl = 0.5*(torch.log(p_var)-torch.log(q_var) + q_var/p_var + torch.pow(torch.add(q_mu,-p_mu),2)/p_var -1)
+    def KL_loss(self,q_mu,q_log_var,p_mu,p_log_var):
+        q_var, p_var = torch.exp(q_log_var),torch.exp(p_log_var)
+        kl = 0.5*(p_log_var - q_log_var + q_var/p_var + torch.pow(torch.add(q_mu,-p_mu),2)/p_var -1)
         return kl.sum(1).mean()
 
     def forward_latent(self,input):
         # initialize required lists
         z_mu_p = []
-        z_var_p = []
+        z_log_var_p = []
         z_sample = []
         z_mu_q = []
-        z_var_q = []
+        z_log_var_q = []
         kl_loss = 0
 
-        #do bottom up step and get z_mu_q_d, z_var_q_d
-        z_mu_q_d, z_var_q_d = self.bottom_up(input)
+        #do bottom up step and get z_mu_q_d, z_log_var_q_d
+        z_mu_q_d, z_log_var_q_d = self.bottom_up(input)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
         #add mu_p,var_p and samples of top z to list
-        z_mu_p.append(torch.zeros(z_mu_q_d[-1].size()))
-        z_var_p.append(torch.ones(z_var_q_d[-1].size()))
-        z_sample.append(self.sample_z(z_mu_q_d[-1], z_var_q_d[-1]))
+        z_mu_p.append(torch.zeros(z_mu_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
+        z_log_var_p.append(torch.zeros(z_log_var_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
+        z_sample.append(self.sample_z(z_mu_q_d[-1], z_log_var_q_d[-1])) #[[batch_size * z_size[-1]]]
 
-        #do top down step and get z_mu_p, z_var_p,z_sample
-        z_mu_p, z_var_p, z_sample = self.top_down(z_sample, z_mu_p, z_var_p)
+        #do top down step and get z_mu_p, z_log_var_p,z_sample
+        z_mu_p, z_log_var_p, z_sample = self.top_down(z_sample, z_mu_p, z_log_var_p)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
-        #combine z_mu_q_d, z_var_q_d, z_mu_p, z_var_p to generate z_mu_q and z_var_q
+        #combine z_mu_q_d, z_log_var_q_d, z_mu_p, z_log_var_p to generate z_mu_q and z_log_var_q
         for i in range(len(self.z_size)):
-            mu, var = self.Gaussian_update(z_mu_q_d[i], z_var_q_d[i], z_mu_p[i], z_var_p[i])
+            mu, log_var = self.Gaussian_update(z_mu_q_d[i], z_log_var_q_d[i], z_mu_p[i], z_log_var_p[i])
             z_mu_q.append(mu)
-            z_var_q.append(var)
+            z_log_var_q.append(log_var)
+        # the shape of z_mu_q,z_log_var_q: [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
         #calculate KL_loss
         for i in range(len(self.z_size)):
-            kl_loss = kl_loss + self.KL_loss(z_mu_q[i], z_var_q[i], z_mu_p[i], z_var_p[i])
+            kl_loss = kl_loss + self.KL_loss(z_mu_q[i], z_log_var_q[i], z_mu_p[i], z_log_var_p[i])
         return z_sample[0],kl_loss
 
     def forward(self, batch):
@@ -167,14 +175,14 @@ class LVAE(torch.nn.Module):
             # get samples of  z
             z_sample = []
             z_mu_p = []
-            z_var_p =[]
-            z_mu_p.append(torch.zeros(n_batch,self.z_size[-1]))
-            z_var_p.append(torch.ones(n_batch, self.z_size[-1]))
+            z_log_var_p =[]
+            z_mu_p.append(torch.zeros(n_batch,self.z_size[-1]).to(self.device()))
+            z_log_var_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
             if z is not None:
-                z_sample.append(z)
+                z_sample.append(z.to(self.device()))
             else:
-                z_sample.append(self.sample_z(z_mu_p[0], z_var_p[0]))
-            _,_,z_sample = self.top_down(z_sample,z_mu_p,z_var_p)
+                z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
+            _,_,z_sample = self.top_down(z_sample,z_mu_p,z_log_var_p)
             z = z_sample[0].unsqueeze(1) # n_batch * 1 * ladder_z_size[0]
 
             # inital values
@@ -182,12 +190,12 @@ class LVAE(torch.nn.Module):
             h_0, c_0 = h[:,:self.decoder.d_d_h], h[:,self.decoder.d_d_h:] # n_batch * dec_hid_sz
             h_0 = h_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
             c_0 = c_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
-            w = torch.tensor(self.bos).repeat(n_batch) # n_batch
-            x = torch.tensor([self.pad]).repeat(n_batch,max_len) # n_batch * max_len
+            w = torch.tensor(self.bos).repeat(n_batch).to(self.device()) # n_batch
+            x = torch.tensor([self.pad]).repeat(n_batch,max_len).to(self.device()) # n_batch * max_len
 
             x[:, 0] = self.bos
-            end_pads = torch.tensor([max_len]).repeat(n_batch) # a tensor record the length of each molecule, size=n_batch
-            eos_mask = torch.zeros(n_batch, dtype=torch.bool) # a tensor indicate the molecular generation process is over or not,size=n_batch
+            end_pads = torch.tensor([max_len]).to(self.device()).repeat(n_batch) # a tensor record the length of each molecule, size=n_batch
+            eos_mask = torch.zeros(n_batch, dtype=torch.bool).to(self.device()) # a tensor indicate the molecular generation process is over or not,size=n_batch
 
             # generating cycle
             for i in range(1,max_len):
@@ -207,7 +215,6 @@ class LVAE(torch.nn.Module):
             new_x = []
             for i in range(x.size(0)):
                 new_x.append(x[i, :end_pads[i]])
-            print(x,new_x)
             return [self.tensor2string(i_x) for i_x in new_x]
 
 
