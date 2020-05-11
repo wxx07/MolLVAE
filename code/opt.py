@@ -32,6 +32,18 @@ def get_parser(parser=None):
     model_args.add_argument("--emb_sz",
                             type=int, default=128,
                             help="Embedding size")
+    model_args.add_argument("--enc_hidden_size",
+                            type=int, default=256,
+                            help="Encoder hidden vector size")
+    model_args.add_argument("--enc_num_layers",
+                            type=int, default=1,
+                            help="Encoder number of lstm layers")
+    model_args.add_argument("--enc_sorted_seq",
+                            type=bool, default=True,
+                            help="If the input of encoder is not sorted,set Flase")
+    model_args.add_argument("--enc_bidirectional",
+                            type=bool, default=False,
+                            help="If True, becomes a bidirectional LSTM_encoder")
     
     ## decoder
     model_args.add_argument("--dec_hid_sz",
@@ -42,6 +54,16 @@ def get_parser(parser=None):
                             help="Decoder number of lstm layers")
     
     ## ladder latent code
+    model_args.add_argument("--ladder_d_size",
+                            type=list, default=[512,256,128,64,32],
+                            help="The dimension of each layer in deterministic upward")
+    model_args.add_argument("--ladder_z_size",
+                            type=list, default=[64,32,16,8,4],
+                            help="The dimension of each level latent z")
+    model_args.add_argument("--ladder_z2z_layer_size",
+                            type=list, default=[8,16,32,64],
+                            help="The z2z layer size in top down step")
+
     
     
     ########## train
