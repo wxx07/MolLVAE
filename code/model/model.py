@@ -136,10 +136,12 @@ class LVAE(torch.nn.Module):
         z_mu_p, z_log_var_p, z_sample = self.top_down(z_sample, z_mu_p, z_log_var_p)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
         #combine z_mu_q_d, z_log_var_q_d, z_mu_p, z_log_var_p to generate z_mu_q and z_log_var_q
-        for i in range(len(self.z_size)):
+        for i in range(len(self.z_size)-1):
             mu, log_var = self.Gaussian_update(z_mu_q_d[i], z_log_var_q_d[i], z_mu_p[i], z_log_var_p[i])
             z_mu_q.append(mu)
             z_log_var_q.append(log_var)
+        z_mu_q.append(z_mu_q_d[-1])
+        z_log_var_q.append(z_log_var_q_d[-1])
         # the shape of z_mu_q,z_log_var_q: [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
         #calculate KL_loss
