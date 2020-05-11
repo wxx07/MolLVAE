@@ -68,7 +68,7 @@ class LSTM_decoder(nn.Module):
             yhat[:, :-1].contiguous().view(-1, yhat.size(-1)),
             padded_x[:, 1:].contiguous().view(-1),
             ignore_index=self.pad
-        )
+        ) # scalar, return average loss across samples
         
         return recon_loss
     
