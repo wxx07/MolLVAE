@@ -35,22 +35,19 @@ class LVAE(torch.nn.Module):
             )
 
         #ladder
-        self.top_down_layers = []
-        self.bottom_up_layers = []
+        self.top_down_layers = nn.ModuleList()
+        self.bottom_up_layers = nn.ModuleList()
 
         #get a list contain bottom up layers,which used to generate z_mu_q_d and z_log_var_q_d
         for i in range(len(self.d_size)):
             if i == 0:
-                exec('self.bottom_up_layer{}=MLP(in_size=self.ladder_input_size,layer_size=self.d_size[i],out_size=self.z_size[i])'.format(i))
-                exec('self.bottom_up_layers.append(self.bottom_up_layer{})'.format(i))
+                self.bottom_up_layers.append(MLP(in_size=self.ladder_input_size,layer_size=self.d_size[i],out_size=self.z_size[i]))
             else:
-                exec('self.bottom_up_layer{}=MLP(in_size=self.d_size[i-1],layer_size=self.d_size[i],out_size=self.z_size[i])'.format(i))
-                exec('self.bottom_up_layers.append(self.bottom_up_layer{})'.format(i))
+                self.bottom_up_layers.append(MLP(in_size=self.d_size[i-1],layer_size=self.d_size[i],out_size=self.z_size[i]))
 
         #get a list contain top down layers,which used to generate z_mu_p and z_log_var_p
         for i in range(len(self.z_reverse_size)-1):
-            exec('self.top_down_layer{}=MLP(in_size=self.z_reverse_size[i],layer_size=self.z2z_layer_size[i],out_size=self.z_reverse_size[i+1])'.format(i))
-            exec('self.top_down_layers.append(self.top_down_layer{})'.format(i))
+            self.top_down_layers.append(MLP(in_size=self.z_reverse_size[i],layer_size=self.z2z_layer_size[i],out_size=self.z_reverse_size[i+1]))
 
     def device(self):
         return next(self.parameters()).device
