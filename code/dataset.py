@@ -122,12 +122,18 @@ class DatasetSplit:
         ## load vocab generated from training set
         train_vocab_path = base_dir + "/data/train_vocab.pkl"
         if split=="train":
-            self._vocab = CharVocab.from_data(split_raw)
             if not os.path.exists(train_vocab_path):
+                print("Building vocab...")
+                self._vocab = CharVocab.from_data(split_raw)
                 with open(train_vocab_path, "wb") as fo:
                     pickle.dump(self._vocab, fo)
+            else:
+                print("Loading vocab...")
+                with open(train_vocab_path, "rb") as fi:
+                    self._vocab = pickle.load(fi)
                 
         elif split in ["valid", "test"]:
+            print("Loading vocab...")
             assert os.path.exists(train_vocab_path), "Cant find train_vocab if never get train_split"
             with open(train_vocab_path,"rb") as fi:
                 self._vocab = pickle.load(fi)
