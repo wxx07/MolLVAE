@@ -55,13 +55,13 @@ def get_parser(parser=None):
     
     ## ladder latent code
     model_args.add_argument("--ladder_d_size",
-                            type=list, default=[512,256,128,64,32],
+                            type=list, default=[128,64,32],
                             help="The dimension of each layer in deterministic upward")
     model_args.add_argument("--ladder_z_size",
-                            type=list, default=[64,32,16,8,4],
+                            type=list, default=[16,8,4],
                             help="The dimension of each level latent z")
     model_args.add_argument("--ladder_z2z_layer_size",
-                            type=list, default=[8,16,32,64],
+                            type=list, default=[8,16],
                             help="The z2z layer size in top down step")
 
     
@@ -171,7 +171,7 @@ def add_expr_parser(parser):
                         help="File path to valid.csv")
     
     parser.add_argument("--test_load",
-                        type=str, default="../data/valid.csv",
+                        type=str, default="../data/test.csv",
                         help="File path to test.csv")
     
     parser.add_argument("--model_save",
