@@ -1,0 +1,5 @@
+*.pyc
+**/.ipynb_checkpoints
+*pkl
+!train_vocab.pkl
+*.ipynb

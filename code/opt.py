@@ -42,7 +42,7 @@ def get_parser(parser=None):
                             type=bool, default=True,
                             help="If the input of encoder is not sorted,set Flase")
     model_args.add_argument("--enc_bidirectional",
-                            type=bool, default=False,
+                            type=bool, default=True,
                             help="If True, becomes a bidirectional LSTM_encoder")
     
     ## decoder
@@ -55,13 +55,16 @@ def get_parser(parser=None):
     
     ## ladder latent code
     model_args.add_argument("--ladder_d_size",
-                            type=list, default=[512,256,128,64,32],
+                            type=int, default=[128,64,32],
+                            nargs="+", 
                             help="The dimension of each layer in deterministic upward")
     model_args.add_argument("--ladder_z_size",
-                            type=list, default=[64,32,16,8,4],
+                            type=int, default=[16,8,4],
+                            nargs="+",
                             help="The dimension of each level latent z")
     model_args.add_argument("--ladder_z2z_layer_size",
-                            type=list, default=[8,16,32,64],
+                            type=int, default=[8,16],
+                            nargs="+",
                             help="The z2z layer size in top down step")
 
     
@@ -82,11 +85,8 @@ def get_parser(parser=None):
                             type=int, default=50,
                             help="Clip gradients to this value")
     train_args.add_argument("--loss_buf_sz",
-                            type=int, default=1000,
+                            type=int, default=20,
                             help="Buffer losses for the last m batches")
-    train_args.add_argument("--log_path",
-                            type=str,
-                            help="/path/to/experiment/log.csv")
     
     
     ## cosine annealing lr with restart
@@ -101,7 +101,7 @@ def get_parser(parser=None):
                             type=float, default=3*1e-4,
                             help="Initial and max lr in annealing")
     train_args.add_argument("--lr_end",
-                            type=float, default=3*1e-4,
+                            type=float, default=1e-6,
                             help="Final and min lr in annealing")
     train_args.add_argument("--lr_period",
                             type=int, default=10,
@@ -129,13 +129,13 @@ def get_parser(parser=None):
                             "constant lr" | \
                             ...')
     train_args.add_argument("--kl_e_start",
-                            type=int, default=1,
+                            type=int, default=0,
                             help="Epoch start increasing KL weight")
     train_args.add_argument("--kl_w_start",
                             type=float, default=1.,
                             help="Initial KL weight")
     train_args.add_argument("--kl_w_end",
-                            type=float, default=1.,
+                            type=float, default=10.,
                             help="Final KL weight")
     
     
@@ -171,7 +171,7 @@ def add_expr_parser(parser):
                         help="File path to valid.csv")
     
     parser.add_argument("--test_load",
-                        type=str, default="../data/valid.csv",
+                        type=str, default="../data/test.csv",
                         help="File path to test.csv")
     
     parser.add_argument("--model_save",
@@ -181,6 +181,10 @@ def add_expr_parser(parser):
                         type=int, default=10,
                         help="Every n epoches to save")
     
+    parser.add_argument("--log_path",
+                        type=str,
+                        help="/path/to/experiment/log.csv")
+
     
     
     return parser
