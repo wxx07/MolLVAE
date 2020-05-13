@@ -55,13 +55,16 @@ def get_parser(parser=None):
     
     ## ladder latent code
     model_args.add_argument("--ladder_d_size",
-                            type=list, default=[128,64,32],
+                            type=int, default=[128,64,32],
+                            nargs="+", 
                             help="The dimension of each layer in deterministic upward")
     model_args.add_argument("--ladder_z_size",
-                            type=list, default=[16,8,4],
+                            type=int, default=[16,8,4],
+                            nargs="+",
                             help="The dimension of each level latent z")
     model_args.add_argument("--ladder_z2z_layer_size",
-                            type=list, default=[8,16],
+                            type=int, default=[8,16],
+                            nargs="+",
                             help="The z2z layer size in top down step")
 
     
