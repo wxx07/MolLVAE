@@ -33,30 +33,34 @@ def get_lr_annealer(optimizer, config):
     
     if config.lr_anr_type == "SGDR":
         return CosineAnnealingLRWithRestart(optimizer, config)
-    elif config.lr_anr_type == "const":
-        pass # TODO
     else:
         raise ValueError("Invalid lr annealer type")
 
     
-def get_kl_annealer(n_epoch, kl_anr_type):
+def get_kl_annealer(n_epoch, config):
     
-    if kl_anr_type == "const":
-        return KLAnnealer(n_epoch, config.kl_e_start, config.kl_w_start, config.kl_w_start)
-    elif kl_anr_type == "linear_inc":
-        return KLAnnealer(n_epoch, config.kl_e_start, config.kl_w_start, config.kl_w_end)
+    if config.kl_anr_type == "const":
+        return KLAnnealer_mono(n_epoch, 0, config.kl_w_start, config.kl_w_start)
+    
+    elif config.kl_anr_type == "linear_inc":
+        return KLAnnealer_mono(n_epoch, config.kl_e_start, config.kl_w_start, config.kl_w_end)
+    
+    elif config.kl_anr_type == "cyclic":
+        return KLAnnealer_cyc(n_epoch, config.kl_w_start, config.kl_w_end, config.kl_n_cycle, config.ratio)
+    
+    elif config.kl_anr_type == "expo":
+        return KLAnnealer_expo(n_epoch)
+    
     else:
         raise ValueError("Invalid kl annealer type")
     
-def get_n_epoch(lr_annealer_type):
+def get_n_epoch(config):
     
-    if lr_annealer_type == "SGDR":
+    if config.lr_anr_type == "SGDR":
         n_epoch = sum(config.lr_period * (config.lr_mult_coeff ** i)
             for i in range(config.lr_n_restarts))
         print(f"Using SGDR annealer. Will train {n_epoch} epoches.")
         return n_epoch
-    elif lr_annealer_type == "const":
-        return config.n_epoch
     else:
         raise ValueError("Invalid lr annealer type")
 
@@ -99,19 +103,39 @@ class CosineAnnealingLRWithRestart(_LRScheduler):
         if self.current_epoch == self.t_end:
             self.current_epoch = 0
             self.t_end = self.n_mult * self.t_end
+
+def frange_cycle_linear(n_iter, start=0.0, stop=1.0,  n_cycle=4, ratio=0.5):
+    """
+    https://github.com/haofuml/cyclical_annealing
+    """
+    L = np.ones(n_iter) * stop
+    period = n_iter/n_cycle
+    step = (stop-start)/(period*ratio) # linear schedule
+
+    for c in range(n_cycle):
+        v, i = start, 0
+        while v <= stop and (int(i+c*period) < n_iter):
+            L[int(i+c*period)] = v
+            v += step
+            i += 1
+    return L    
     
-    
-class KLAnnealer:
+class KLAnnealer_mono:
     """
     Control KL loss weight to increase linearly
-    Adapted from `moses`
+        from epoch n_0 to the last epoch 
+        leaving epoch < n_0 with constant `w_start` weight.
+        "mono" means monotonic, compare with cyclical annealing.
+        
+    Adapted from `moses`    
     """
     
-    def __init__(self, n_epoch, kl_e_start, kl_w_start, kl_w_end):
-        self.i_start = kl_e_start
-        self.w_start = kl_w_start
-        self.w_max = kl_w_end
+    def __init__(self, n_epoch, e_start, w_start, w_end):
+        self.i_start = e_start
+        self.w_start = w_start
+        self.w_max = w_end
         self.n_epoch = n_epoch
+        
 
         self.inc = (self.w_max - self.w_start) / (self.n_epoch - self.i_start)
 
@@ -119,6 +143,54 @@ class KLAnnealer:
         # min(i)=0
         k = (i - self.i_start) if i >= self.i_start else 0
         return self.w_start + k * self.inc
+    
+class KLAnnealer_cyc:
+    """
+    Implementation of "Cyclical Annealing Schedule: \
+    A Simple Approach to Mitigating KL Vanishing"
+    https://arxiv.org/abs/1903.10145
+    """
+    
+    def __init__(self, n_epoch, w_start=0.0, w_end=1.0,  n_cycle=4, ratio=0.5):
+        self.kl_weights = frange_cycle_linear(n_epoch, \
+                                              start=w_start, \
+                                              stop=w_end, \
+                                              n_cycle=n_cycle, \
+                                              ratio=ratio)
+        
+
+    def __call__(self, i):
+        
+        # min(i)=0
+        return self.kl_weights[i]
+
+def get_expo_inc_klws(n_epoch, w_start=1e-4, w_end=1.0, base=2):
+    
+    klws = np.ones(n_epoch) * w_end
+    for i in range(n_epoch):
+        klw = w_start * (base ** i)
+        if klw <= w_end:
+            klws[i] = klw
+        else:
+            break
+    
+    return klws
+    
+class KLAnnealer_expo:
+    """
+    Exponential increasing kl weight
+    """
+    
+    def __init__(self, n_epoch, w_start=1e-4, w_end=1.0, base=2):
+        self.kl_weights = get_expo_inc_klws(n_epoch, \
+                                              w_start=w_start, \
+                                              w_end=w_end, \
+                                              base=base)
+        
+    def __call__(self, i):
+        
+        # min(i)=0
+        return self.kl_weights[i]
     
 
 def train_epoch(model, epoch, data, kl_weight, optimizer=None):
@@ -182,11 +254,11 @@ def train(model, config, train_dataloader, valid_dataloader=None, logger=None):
     device = model.device()
     
     ## get optimizer and annealer
-    n_epoch = get_n_epoch(config.lr_anr_type)
+    n_epoch = get_n_epoch(config)
     optimizer = torch.optim.Adam(get_trainable_params(model),
                                  lr=config.lr_start)
-    lr_annealer = get_lr_annealer(optimizer, config) #! [to be done] mechanism
-    kl_annealer = get_kl_annealer(n_epoch, config.kl_anr_type)
+    lr_annealer = get_lr_annealer(optimizer, config)
+    kl_annealer = get_kl_annealer(n_epoch, config)
     
     ## iterative training
     model.zero_grad()
@@ -223,6 +295,8 @@ def train(model, config, train_dataloader, valid_dataloader=None, logger=None):
             model = model.to(device)
         
         lr_annealer.step()
+
+        
 
         
         
