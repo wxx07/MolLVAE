@@ -91,11 +91,10 @@ def get_parser(parser=None):
     
     ## cosine annealing lr with restart
     train_args.add_argument("--lr_anr_type",
-                            type=str, choices=["SGDR", "const"],
-                            default="const",
+                            type=str, choices=["SGDR"],
+                            default="SGDR",
                             help='choose lr annealer in \
                             "cosine annealing with restart" | \
-                            "constant lr" | \
                             ...')
     train_args.add_argument("--lr_start",
                             type=float, default=3*1e-4,
@@ -107,7 +106,7 @@ def get_parser(parser=None):
                             type=int, default=10,
                             help="Epoches before next restart")
     train_args.add_argument("--lr_n_restarts",
-                            type=int, default=10,
+                            type=int, default=5,
                             help="Times of restart in annealing")
     train_args.add_argument("--lr_mult_coeff",
                             type=int, default=1,
@@ -116,27 +115,35 @@ def get_parser(parser=None):
     
     
     
+    ## KL loss annealer: loss = beta * kl_loss + rec_loss with beta increasing from 0
     
-    
-    ## linear increasing KL loss weight annealer
-    # loss = kl_weight * kl_loss + rec_loss
-    # annealing startpoint not necessary at the first epoch 
     train_args.add_argument("--kl_anr_type",
-                            type=str, choices=["linear_inc", "const"],
-                            default="const",
+                            type=str, choices=["linear_inc","const","cyclic","expo"],
+                            default="cyclic",
                             help='choose kl annealer in \
                             "linear increasing" | \
                             "constant lr" | \
+                            "cyclical increasing" | \
                             ...')
+    # linear/monotonic increasing annealer
     train_args.add_argument("--kl_e_start",
                             type=int, default=0,
                             help="Epoch start increasing KL weight")
     train_args.add_argument("--kl_w_start",
-                            type=float, default=1.,
+                            type=float, default=1e-4,
                             help="Initial KL weight")
     train_args.add_argument("--kl_w_end",
-                            type=float, default=10.,
+                            type=float, default=1e-3,
                             help="Final KL weight")
+    # cyclical annealer
+    train_args.add_argument("--kl_n_cycle",
+                            type=int, default=1,
+                            help="Cycles to repeat. Last cycle ends with `kl_w_end`")
+    train_args.add_argument("--ratio",
+                            type=float, default=0.2,
+                            help="Propotion of a cycle is used for increasing beta")
+    
+    
     
     
     
