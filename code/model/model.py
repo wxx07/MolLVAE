@@ -16,6 +16,7 @@ class LVAE(torch.nn.Module):
         self.d_size = config.ladder_d_size
         self.z_size = config.ladder_z_size
         self.z2z_layer_size = config.ladder_z2z_layer_size
+        self.full_z_size = sum(config.ladder_z_size)
         self.z_reverse_size = list(reversed(config.ladder_z_size))
         self.vocab = vocab
         # Word embeddings layer
@@ -32,7 +33,7 @@ class LVAE(torch.nn.Module):
 
         # Decoder
         if config.dec_type == 'lstm':
-            self.decoder = LSTM_decoder(self.vocab,self.embedding,config,config.ladder_z_size[0])
+            self.decoder = LSTM_decoder(self.vocab,self.embedding,config,self.full_z_size)
         else:
             raise ValueError(
                 "Invalid decoder_type"
@@ -76,22 +77,40 @@ class LVAE(torch.nn.Module):
                 z_log_var_q_d.append(log_var_q_d)
         return z_mu_q_d, z_log_var_q_d # shape:[[batch_size * z_size[0]],[batch_size * z_size[1]],....,[batch_size * z_size[-1]]]
 
-    def top_down(self, z_sample, z_mu_p, z_log_var_p):
+    def top_down(self, z_mu_q_d,z_log_var_q_d):
         '''
-        Do top down step and get z_mu_p,z_log_var_p, also return samples of each level z
+        Do top down step and get z_mu_p,z_log_var_p,z_mu_q,z_log_var_q, also return samples of each level z
 
-        :param z_sample: only have the samples of top z
-        :param z_mu_p: only have the z_mu_p of top z (mu = 0)
-        :param z_log_var_p: only have the z_log_var_p of top z (var = 1)
-        :return three list :z_mu_p,z_log_var_p,z_sample
+        :param z_mu_q_d: z_mu_q_d from bottom up step
+        :param z_log_var_q_d: z_log_var_q_d from bottom up step
+        :return five list :z_mu_p,z_log_var_p,z_sample,z_mu_q,z_log_var_q
         '''
+        #initialize required list
+        z_mu_p = []
+        z_log_var_p = []
+        z_sample = []
+        z_mu_q = []
+        z_log_var_q = []
+        z_mu_p.append(torch.zeros(z_mu_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
+        z_log_var_p.append(torch.zeros(z_log_var_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
+        z_mu_q.append(z_mu_q_d[-1])#[[batch_size * z_size[-1]]]
+        z_log_var_q.append(z_log_var_q_d[-1])#[[batch_size * z_size[-1]]]
+        z_sample.append(self.sample_z(z_mu_q[0], z_log_var_q[0]))  # [[batch_size * z_size[-1]]]
+
         for i in range(len(self.z_reverse_size) - 1):
             _, mu_p, log_var_p = self.top_down_layers[i](z_sample[i])
-            z_sample.append(self.sample_z(mu_p, log_var_p))
             z_mu_p.append(mu_p)
             z_log_var_p.append(log_var_p)
-        #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
-        return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
+
+            # combine z_mu_q_d, z_log_var_q_d, z_mu_p, z_log_var_p to generate z_mu_q and z_log_var_q
+            mu_q,log_var_q = self.Gaussian_update(z_mu_q_d[-i-2], z_log_var_q_d[-i-2], z_mu_p[i+1], z_log_var_p[i+1])
+            z_mu_q.append(mu_q)
+            z_log_var_q.append(log_var_q)
+
+            #sample z from z_mu_q,z_log_var_q
+            z_sample.append(self.sample_z(mu_q,log_var_q))
+        #the shape of z_mu_p,z_log_var_p z_mu_q,z_log_var_q and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
+        return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_mu_q)),list(reversed(z_log_var_q)),list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p,z_mu_q,z_log_var_q and z_sample
 
     def sample_z(self, mu, log_var):
         '''
@@ -120,38 +139,24 @@ class LVAE(torch.nn.Module):
         return kl.sum(1).mean()
 
     def forward_latent(self,input):
-        # initialize required lists
-        z_mu_p = []
-        z_log_var_p = []
-        z_sample = []
-        z_mu_q = []
-        z_log_var_q = []
+        # initialize required variable
         kl_loss = 0
 
         #do bottom up step and get z_mu_q_d, z_log_var_q_d
         z_mu_q_d, z_log_var_q_d = self.bottom_up(input)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
-        #add mu_p,var_p and samples of top z to list
-        z_mu_p.append(torch.zeros(z_mu_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
-        z_log_var_p.append(torch.zeros(z_log_var_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
-        z_sample.append(self.sample_z(z_mu_q_d[-1], z_log_var_q_d[-1])) #[[batch_size * z_size[-1]]]
-
         #do top down step and get z_mu_p, z_log_var_p,z_sample
-        z_mu_p, z_log_var_p, z_sample = self.top_down(z_sample, z_mu_p, z_log_var_p)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
+        z_mu_p, z_log_var_p, z_mu_q,z_log_var_q,z_sample= self.top_down(z_mu_q_d,z_log_var_q_d)# [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
 
-        #combine z_mu_q_d, z_log_var_q_d, z_mu_p, z_log_var_p to generate z_mu_q and z_log_var_q
+        # concatenate z_sample
+        z_out = z_sample[0]
         for i in range(len(self.z_size)-1):
-            mu, log_var = self.Gaussian_update(z_mu_q_d[i], z_log_var_q_d[i], z_mu_p[i], z_log_var_p[i])
-            z_mu_q.append(mu)
-            z_log_var_q.append(log_var)
-        z_mu_q.append(z_mu_q_d[-1])
-        z_log_var_q.append(z_log_var_q_d[-1])
-        # the shape of z_mu_q,z_log_var_q: [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]]
+            z_out = torch.cat((z_out,z_sample[i+1]),1) # batch_size * full_z_size
 
         #calculate KL_loss
         for i in range(len(self.z_size)):
             kl_loss = kl_loss + self.KL_loss(z_mu_q[i], z_log_var_q[i], z_mu_p[i], z_log_var_p[i])
-        return z_sample[0],kl_loss
+        return z_out,kl_loss
 
     def forward(self, batch):
         _,h = self.encoder(batch)
@@ -164,32 +169,55 @@ class LVAE(torch.nn.Module):
         string = self.vocab.ids2string(ids, rem_bos=True, rem_eos=True)
         return string
 
-    def sample(self,n_batch,max_len=100,temp=1.0,z=None):
+    def gen_top_down(self,z_sample, z_mu_p, z_log_var_p):
+        '''
+        Top down step during generation only
+
+        :param z_sample: only have the samples of top z
+        :param z_mu_p: only have the z_mu_p of top z (mu = 0)
+        :param z_log_var_p: only have the z_log_var_p of top z (var = 1)
+        :return three list :z_mu_p,z_log_var_p,z_sample
+        '''
+        for i in range(len(self.z_reverse_size) - 1):
+            _, mu_p, log_var_p = self.top_down_layers[i](z_sample[i])
+            z_sample.append(self.sample_z(mu_p, log_var_p))
+            z_mu_p.append(mu_p)
+            z_log_var_p.append(log_var_p)
+        #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
+        return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
+
+    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None):
         '''
         Generating n_batch samples
 
         :param n_batch: number of sentences to generate
         :param max_len: max len of samples
         :param temp: temperature of softmax
-        :param z: (n_batch, ladder_z_size[-1]) of floats, vector of top z or None
+        :param z_in: [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]] , list of tensor of latent z. Default: None
         :return: list of tensors of strings, samples sequence x
         '''
         with torch.no_grad():
             # get samples of  z
             z_sample = []
-            z_mu_p = []
-            z_log_var_p =[]
-            z_mu_p.append(torch.zeros(n_batch,self.z_size[-1]).to(self.device()))
-            z_log_var_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
-            if z is not None:
-                z_sample.append(z.to(self.device()))
+            if z_in is not None:
+                for i in z_in :
+                    z_sample.append(i.to(self.device()))
             else:
+                z_mu_p = []
+                z_log_var_p = []
+                z_mu_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
+                z_log_var_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
                 z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
-            _,_,z_sample = self.top_down(z_sample,z_mu_p,z_log_var_p)
-            z = z_sample[0].unsqueeze(1) # n_batch * 1 * ladder_z_size[0]
+                _,_,z_sample = self.gen_top_down(z_sample,z_mu_p,z_log_var_p)
+
+            # concatenate z_sample
+            cat_z = z_sample[0]
+            for i in range(len(self.z_size) - 1):
+                cat_z = torch.cat((cat_z, z_sample[i + 1]), 1)
+            z = cat_z.unsqueeze(1) # n_batch * 1 * full_z_size
 
             # inital values
-            h = self.decoder.map_z2hc(z_sample[0]) # n_batch * dec_hid_sz *2
+            h = self.decoder.map_z2hc(cat_z) # n_batch * dec_hid_sz *2
             h_0, c_0 = h[:,:self.decoder.d_d_h], h[:,self.decoder.d_d_h:] # n_batch * dec_hid_sz
             h_0 = h_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
             c_0 = c_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
@@ -203,7 +231,7 @@ class LVAE(torch.nn.Module):
             # generating cycle
             for i in range(1,max_len):
                 x_emb = self.embedding(w).unsqueeze(1) # n_batch * 1 * embed_size
-                x_input = torch.cat([x_emb, z], dim=-1) # n_batch * 1 * (embed_size + ladder_z_size[0])
+                x_input = torch.cat([x_emb, z], dim=-1) # n_batch * 1 * (embed_size + full_z_size)
                 output, (h_0,c_0) = self.decoder.lstm(x_input, (h_0,c_0)) # output size : n_batch * 1 * dec_hid_sz
                 y = self.decoder.decoder_fc(output.squeeze(1))
                 y = F.softmax(y / temp, dim=-1) # n_batch * n_vocab
