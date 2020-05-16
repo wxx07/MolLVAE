@@ -1,6 +1,9 @@
 # Note
 
-* `exp` setting:
+* `exp.old` setting:
   * KL loss weight linearly increases from 1e-4 (epoch 0) to 1e-3 (epoch 10).
-  * As default setting (in [opt.py](https://github.com/wxx07/MolLVAE/blob/master/code/opt.py)) from now on.
+  * Previous version of ladder sampling. Only for comparation.
+* `exp` setting
+  * Same KL weight annealer as `exp`
+  * Updated ladder sampling.
 
