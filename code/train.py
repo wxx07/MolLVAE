@@ -8,7 +8,7 @@ Script for training mollvae
 """
 
 
-from model.model import MolLVAE
+from model.model import LVAE
 from dataset import DatasetSplit
 from opt import get_parser
 
@@ -339,7 +339,7 @@ vocab = train_split._vocab
 ############ get model and train
 
 print("Initializing model...")
-model = MolLVAE(vocab, config).to(device)
+model = LVAE(vocab, config).to(device)
 
 ## log training process to csv file
 logger = Logger() if config.log_path is not None else None
