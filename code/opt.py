@@ -144,6 +144,24 @@ def get_parser(parser=None):
                             help="Propotion of a cycle is used for increasing beta")
     
     
+    ########## sample
+    sample_args = parser.add_argument_group('sampling')
+    sample_args.add_argument("--n_sample",
+                            type=int, default=1000,
+                            help="Number of samples from prior distribution")
+    sample_args.add_argument("--n_enc_zs",
+                            type=int, default=10,
+                            help="n latent codes for each mol")
+    sample_args.add_argument("--n_dec_xs",
+                            type=int, default=10,
+                            help="n decoding attempts for each z")
+    sample_args.add_argument("--gen_bsz",
+                            type=int, default=128,
+                            help="Batches when sampling in parallel")
+    sample_args.add_argument("--max_len",
+                            type=int, default=150,
+                            help="Max length of sampled SMILES (includes bos and eos)")
+    
     
     
     
