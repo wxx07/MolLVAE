@@ -77,25 +77,34 @@ class LVAE(torch.nn.Module):
                 z_log_var_q_d.append(log_var_q_d)
         return z_mu_q_d, z_log_var_q_d # shape:[[batch_size * z_size[0]],[batch_size * z_size[1]],....,[batch_size * z_size[-1]]]
 
-    def top_down(self, z_mu_q_d,z_log_var_q_d):
+    def top_down(self, z_mu_q_d,z_log_var_q_d, z_sample=None, mode="train"):
         '''
         Do top down step and get z_mu_p,z_log_var_p,z_mu_q,z_log_var_q, also return samples of each level z
 
         :param z_mu_q_d: z_mu_q_d from bottom up step
         :param z_log_var_q_d: z_log_var_q_d from bottom up step
         :return five list :z_mu_p,z_log_var_p,z_sample,z_mu_q,z_log_var_q
+        
+        
+        Note:
+            * z_sample is not None when evaluating test set reconstruction
+        
         '''
         #initialize required list
         z_mu_p = []
         z_log_var_p = []
-        z_sample = []
         z_mu_q = []
         z_log_var_q = []
         z_mu_p.append(torch.zeros(z_mu_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
         z_log_var_p.append(torch.zeros(z_log_var_q_d[-1].size()).to(self.device())) #[[batch_size * z_size[-1]]]
         z_mu_q.append(z_mu_q_d[-1])#[[batch_size * z_size[-1]]]
         z_log_var_q.append(z_log_var_q_d[-1])#[[batch_size * z_size[-1]]]
-        z_sample.append(self.sample_z(z_mu_q[0], z_log_var_q[0]))  # [[batch_size * z_size[-1]]]
+        
+        if z_sample is None and mode == "train":
+            z_sample = []
+            z_sample.append(self.sample_z(z_mu_q[0], z_log_var_q[0]))  # [[batch_size * z_size[-1]]]
+        else:
+            assert z_sample is not None
 
         for i in range(len(self.z_reverse_size) - 1):
             _, mu_p, log_var_p = self.top_down_layers[i](z_sample[i])
@@ -186,7 +195,7 @@ class LVAE(torch.nn.Module):
         #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
         return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
 
-    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None):
+    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None,concated=False):
         '''
         Generating n_batch samples
 
@@ -198,23 +207,26 @@ class LVAE(torch.nn.Module):
         '''
         with torch.no_grad():
             # get samples of  z
-            z_sample = []
             if z_in is not None:
-                for i in z_in :
-                    z_sample.append(i.to(self.device()))
+                z_sample = z_in
             else:
                 z_mu_p = []
                 z_log_var_p = []
+                z_sample = []
                 z_mu_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
                 z_log_var_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
                 z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
                 _,_,z_sample = self.gen_top_down(z_sample,z_mu_p,z_log_var_p)
 
             # concatenate z_sample
-            cat_z = z_sample[0]
-            for i in range(len(self.z_size) - 1):
-                cat_z = torch.cat((cat_z, z_sample[i + 1]), 1)
-            z = cat_z.unsqueeze(1) # n_batch * 1 * full_z_size
+            if not concated or z_in is None:
+                cat_z = z_sample[0]
+                for i in range(len(self.z_size) - 1):
+                    cat_z = torch.cat((cat_z, z_sample[i + 1]), 1)
+                z = cat_z.unsqueeze(1) # n_batch * 1 * full_z_size
+            else:
+                cat_z = z_sample[:]
+                z = z_sample.unsqueeze(1)
 
             # inital values
             h = self.decoder.map_z2hc(cat_z) # n_batch * dec_hid_sz *2
