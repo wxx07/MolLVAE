@@ -5,5 +5,7 @@
   * Previous version of ladder sampling. Only for comparation.
 * `exp` setting
   * Same KL weight annealer as `exp`
-  * Updated ladder sampling.
+  * Updated ladder sampling.  
+* `exp.e50-150` setting
+  * Continue training from the last pt of `exp` up to 150 epoches.
 
