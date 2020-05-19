@@ -61,6 +61,8 @@ def get_n_epoch(config):
             for i in range(config.lr_n_restarts))
         print(f"Using SGDR annealer. Will train {n_epoch} epoches.")
         return n_epoch
+    elif config.lr_anr_type == "const":
+        return config.n_epoch
     else:
         raise ValueError("Invalid lr annealer type")
 
@@ -257,7 +259,9 @@ def train(model, config, train_dataloader, valid_dataloader=None, logger=None):
     n_epoch = get_n_epoch(config)
     optimizer = torch.optim.Adam(get_trainable_params(model),
                                  lr=config.lr_start)
-    lr_annealer = get_lr_annealer(optimizer, config)
+    
+    if config.lr_anr_type != "const":
+        lr_annealer = get_lr_annealer(optimizer, config)
     kl_annealer = get_kl_annealer(n_epoch, config)
     
     ## iterative training
@@ -294,7 +298,8 @@ def train(model, config, train_dataloader, valid_dataloader=None, logger=None):
                        config.model_save[:-3] + "_{:03d}.pt".format(epoch))
             model = model.to(device)
         
-        lr_annealer.step()
+        if config.lr_anr_type != "const":
+            lr_annealer.step()
 
         
 
@@ -339,7 +344,13 @@ vocab = train_split._vocab
 ############ get model and train
 
 print("Initializing model...")
-model = LVAE(vocab, config).to(device)
+model = LVAE(vocab, config)
+
+## (optional) load trained model
+if config.train_from is not None:
+    model.load_state_dict(torch.load(config.train_from))
+    
+model.to(device)
 
 ## log training process to csv file
 logger = Logger() if config.log_path is not None else None
