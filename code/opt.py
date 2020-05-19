@@ -73,7 +73,7 @@ def get_parser(parser=None):
     train_args = parser.add_argument_group('training')
     
     train_args.add_argument("--dropout",
-                            type=int, default=.1,
+                            type=float, default=.1,
                             help="Global dropout rate")
     train_args.add_argument("--train_bsz",
                             type=int, default=512,
@@ -87,14 +87,19 @@ def get_parser(parser=None):
     train_args.add_argument("--loss_buf_sz",
                             type=int, default=20,
                             help="Buffer losses for the last m batches")
+    train_args.add_argument("--train_from",
+                            type=str,
+                            help="Load trained model from")
+    
     
     
     ## cosine annealing lr with restart
     train_args.add_argument("--lr_anr_type",
-                            type=str, choices=["SGDR"],
+                            type=str, choices=["SGDR","const"],
                             default="SGDR",
                             help='choose lr annealer in \
                             "cosine annealing with restart" | \
+                            "constant lr (for hyperparams searching)" | \
                             ...')
     train_args.add_argument("--lr_start",
                             type=float, default=3*1e-4,
