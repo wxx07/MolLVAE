@@ -6,8 +6,6 @@ from code.dataset import DatasetSplit
 from code.opt import get_parser
 from code.utils import set_seed
 import rdkit
-import tqdm
-from functools import reduce
 
 parser = get_parser()
 config = parser.parse_args("--device cuda:0 \
@@ -16,7 +14,7 @@ device = torch.device(config.device)
 set_seed(config.seed)
 test_split = DatasetSplit("test", r"C:\Users\ASUS\github\MolLVAE\MolLVAE\data\test.csv")
 vocab = test_split._vocab
-load_model_from = "../res/exp/model_049.pt"
+load_model_from = r"C:\Users\ASUS\github\MolLVAE\MolLVAE\res\exp.e50-150\model_e+50_099.pt"
 
 
 print('Load model...')
@@ -71,7 +69,6 @@ with torch.no_grad():
     #decoding
     samp_smiles_2 = model.sample(n_batch=int(math.pow(10,len(z_size))),z_in=z_sample_re)
     total = len(samp_smiles_2)
-    print(total)
     #vaild check
     vaild = 0
     print('vaild check')
