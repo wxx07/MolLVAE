@@ -60,7 +60,7 @@ with torch.no_grad():
                 z_sample.append(z)
             else:
                 z = model.sample_z(mu, log_var)
-                z_sample[i+1] = torch.cat((z_sample[i+1],z))
+                z_sample[i+1] = torch.cat((z_sample[i+1],z),dim=1)
         z_sample[i+1] = z_sample[i+1].view(-1,z_size[-2-i])
         z_sample_re.append(z_sample[i+1].repeat_interleave(int(math.pow(10,len(z_size)-i-2)),dim=0))
     z_sample = list(reversed(z_sample))
