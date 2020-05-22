@@ -9,12 +9,22 @@ import rdkit
 
 parser = get_parser()
 config = parser.parse_args("--device cuda:0 \
-                           --n_enc_zs 1 --n_dec_xs 1 --gen_bsz 128".split())
+                           --n_enc_zs 10 --n_dec_xs 10 --gen_bsz 128 \
+                           --emb_sz 256 \
+                           --enc_hidden_size 256 \
+                           --enc_num_layers 1 \
+                           --dec_hid_sz 512 \
+                           --dec_n_layer 2 \
+                           --ladder_d_size 256 128 64 \
+                           --ladder_z_size 16 8 4 \
+                           --ladder_z2z_layer_size 8 16 \
+                           --dropout 0.2".split())
+load_model_from = "../res/exp.best_hyp_combo97/model_195.pt"
 device = torch.device(config.device)
 set_seed(config.seed)
 test_split = DatasetSplit("test", r"C:\Users\ASUS\github\MolLVAE\MolLVAE\data\test.csv")
 vocab = test_split._vocab
-load_model_from = r"C:\Users\ASUS\github\MolLVAE\MolLVAE\res\exp.e50-150\model_e+50_099.pt"
+dec_n = 10
 
 
 print('Load model...')
@@ -28,7 +38,7 @@ print('sampling...')
 print('----------------------------------------------------------------')
 with torch.no_grad():
     print('sample 1000 mol from prior distribution')
-    samp_smiles_1 = model.sample(1000,max_len=150)
+    samp_smiles_1 = model.sample(1000,max_len=150,deterministic=True)
     total_1 = len(samp_smiles_1)
     #vaild check
     vaild_1 = 0
@@ -41,13 +51,12 @@ with torch.no_grad():
     #unique check
     print('unique check')
     data_1 = pd.DataFrame(samp_smiles_1,columns=['smiles'])
-    count_1 = data_1.loc[:,'smiles'].value_counts().value_counts()
-    print('unique rate: {}'.format(count_1[1]/total_1))
+    count_1 = data_1.loc[:,'smiles'].value_counts()
+    print('unique rate: {}'.format(count_1.size/total_1))
     print('number of mol :{}'.format(total_1))
     print('----------------------------------------------------------------')
 
     #each mol decode 10 times
-    dec_n = 10
     print('each mol decode {} times'.format(dec_n))
     z_mu_p = []
     z_log_var_p = []
@@ -60,7 +69,7 @@ with torch.no_grad():
     for i in range(len(model.z_size) - 1):
         cat_z = torch.cat((cat_z, z_sample[i + 1]), 1)
     cat_z = cat_z.repeat_interleave(dec_n,dim=0)
-    samp_smiles_2 = model.sample(total_1*dec_n,z_in=cat_z,concated=True,max_len=150)
+    samp_smiles_2 = model.sample(total_1*dec_n,z_in=cat_z,concated=True,max_len=150,deterministic=True)
     total_2 = len(samp_smiles_2)
     # vaild check
     vaild_2 = 0
@@ -73,8 +82,8 @@ with torch.no_grad():
     # unique check
     print('unique check')
     data_2 = pd.DataFrame(samp_smiles_2, columns=['smiles'])
-    count_2 = data_2.loc[:, 'smiles'].value_counts().value_counts()
-    print('unique rate: {}'.format(count_2[1] / total_2))
+    count_2 = data_2.loc[:, 'smiles'].value_counts()
+    print('unique rate: {}'.format(count_2.size / total_2))
     print('number of mol :{}'.format(total_2))
     print('----------------------------------------------------------------')
 # sampling
@@ -105,7 +114,7 @@ with torch.no_grad():
         z_sample_re[i].repeat_interleave(100,dim=0)
 
     #decoding
-    samp_smiles_3 = model.sample(n_batch=int(math.pow(10,len(z_size))),z_in=z_sample_re,max_len=150)
+    samp_smiles_3 = model.sample(n_batch=int(math.pow(10,len(z_size))),z_in=z_sample_re,max_len=150,deterministic=True)
     total_3 = len(samp_smiles_3)
     #vaild check
     vaild_3 = 0
@@ -118,8 +127,8 @@ with torch.no_grad():
     #unique check
     print('unique check')
     data_3 = pd.DataFrame(samp_smiles_3,columns=['smiles'])
-    count_3 = data_3.loc[:,'smiles'].value_counts().value_counts()
-    print('unique rate: {}'.format(count_3[1]/total_3))
+    count_3 = data_3.loc[:,'smiles'].value_counts()
+    print('unique rate: {}'.format(count_3.size/total_3))
     print('number of mol :{}'.format(total_3))
     print('----------------------------------------------------------------')
 
@@ -128,7 +137,7 @@ with torch.no_grad():
     z_in = []
     for i in z_sample_re:
         z_in.append(i.repeat_interleave(dec_n, dim=0))
-    samp_smiles_4 = model.sample(n_batch=total_3*dec_n,z_in=z_in,max_len=150)
+    samp_smiles_4 = model.sample(n_batch=total_3*dec_n,z_in=z_in,max_len=150,deterministic=True)
     total_4 = len(samp_smiles_4)
     # vaild check
     vaild_4 = 0
@@ -141,6 +150,6 @@ with torch.no_grad():
     # unique check
     print('unique check')
     data_4 = pd.DataFrame(samp_smiles_4, columns=['smiles'])
-    count_4 = data_4.loc[:, 'smiles'].value_counts().value_counts()
-    print('unique rate: {}'.format(count_4[1] / total_4))
+    count_4 = data_4.loc[:, 'smiles'].value_counts()
+    print('unique rate: {}'.format(count_4.size / total_4))
     print('number of mol :{}'.format(total_4))

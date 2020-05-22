@@ -195,7 +195,7 @@ class LVAE(torch.nn.Module):
         #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
         return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
 
-    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None,concated=False):
+    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None,concated=False,deterministic=False):
         '''
         Generating n_batch samples
 
@@ -248,7 +248,10 @@ class LVAE(torch.nn.Module):
                 y = self.decoder.decoder_fc(output.squeeze(1))
                 y = F.softmax(y / temp, dim=-1) # n_batch * n_vocab
 
-                w = torch.multinomial(y, 1)[:, 0] # input of next generate step, size=n_batch
+                if deterministic:
+                    w = torch.max(y,1)[1]
+                else:
+                    w = torch.multinomial(y, 1)[:, 0] # input of next generate step, size=n_batch
                 x[~eos_mask, i] = w[~eos_mask] # add generated atom to molecule
                 i_eos_mask = ~eos_mask & (w == self.eos)
                 end_pads[i_eos_mask] = i + 1 # update end_pads
