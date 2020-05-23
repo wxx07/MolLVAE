@@ -1,6 +1,5 @@
 import torch
 import os
-import pickle
 from code.model.model import LVAE
 from code.dataset import DatasetSplit
 from code.opt import get_parser
@@ -77,10 +76,7 @@ model.load_state_dict(torch.load(load_model_from))
 model.to(device)
 model.eval()
 
-#load control_test_batch_1
-with open(r'../tmp/control_test.batch1.pkl', 'rb') as f:
-    batch = pickle.load(f)
-batch = [batch[0].to(device),batch[1]]
+# initial parameters
 num_of_sample = 10
 layer_num = len(model.z_size)
 res_path = r'../res/control_z_exp/'
@@ -110,7 +106,6 @@ for i in range(layer_num):
                 print(z,file=f)
                 print('----------------------------------------------------------------------------------------------------',file=f)
         mol = model.sample(n_batch=num_of_sample,max_len=150,z_in=z_sample,deterministic=True)
-        # print(mol)
 
         #save img
         mol_list = []
