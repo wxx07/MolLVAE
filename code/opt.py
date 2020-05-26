@@ -87,9 +87,9 @@ def get_parser(parser=None):
     train_args.add_argument("--loss_buf_sz",
                             type=int, default=20,
                             help="Buffer losses for the last m batches")
-    train_args.add_argument("--train_from",
-                            type=str,
-                            help="Load trained model from")
+#    train_args.add_argument("--train_from",
+#                            type=str,
+#                            help="Load trained model from (Replaced by model_load)")
     
     
     
@@ -151,21 +151,36 @@ def get_parser(parser=None):
     
     ########## sample
     sample_args = parser.add_argument_group('sampling')
-    sample_args.add_argument("--n_sample",
-                            type=int, default=1000,
-                            help="Number of samples from prior distribution")
+    sample_args.add_argument("--sample_type",
+                             type=str, choices=["control_z","prior"],
+                             default="prior",
+                             help="Sample from a certain z or all zs")
+#    sample_args.add_argument("--n_sample",
+#                            type=int, default=1000,
+#                            help="Number of samples from prior distribution")
     sample_args.add_argument("--n_enc_zs",
-                            type=int, default=10,
-                            help="n latent codes for each mol")
+                            type=int, default=[1000,1000,1000],
+                            nargs="+",
+                            help="Number of unique samples at each z layer (bottom z -> top z). \
+                            For prior sampling, e.g. reversed([10,100,1000])")
     sample_args.add_argument("--n_dec_xs",
                             type=int, default=10,
-                            help="n decoding attempts for each z")
+                            help="n decoding attempts for each latent code")
     sample_args.add_argument("--gen_bsz",
                             type=int, default=128,
                             help="Batches when sampling in parallel")
     sample_args.add_argument("--max_len",
-                            type=int, default=150,
+                            type=int, default=100,
                             help="Max length of sampled SMILES (includes bos and eos)")
+    sample_args.add_argument("--sample_save",
+                             type=str,
+                             help="/dir/to/save/result")
+    
+    ## for control_z sampling
+    sample_args.add_argument("--sample_layer",
+                             type=int,
+                             help="Index of z layer to control and sample")
+    
     
     
     
@@ -214,6 +229,10 @@ def add_expr_parser(parser):
     parser.add_argument("--log_path",
                         type=str,
                         help="/path/to/experiment/log.csv")
+    
+    parser.add_argument("--model_load",
+                        type=str,
+                        help="/path/to/trained/model.pt (continue training or eval)")
 
     
     
