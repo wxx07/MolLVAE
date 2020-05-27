@@ -1,30 +1,14 @@
-import torch
-import pandas as pd
-import math
 from mollvae.model.model import LVAE
 from mollvae.dataset import DatasetSplit
 from mollvae.opt import get_parser
 from mollvae.utils.utils import set_seed
-import rdkit
 
-def vaild_check(sample_smiles):
-    vaild = 0
-    for i in sample_smiles:
-        if rdkit.Chem.MolFromSmiles(i) != None:
-            vaild += 1
-    vaild_rate = vaild / len(sample_smiles)
-    return vaild_rate
-
-def unique_check(sample_smiles):
-    data = pd.DataFrame(sample_smiles, columns=['smiles'])
-    count = data.loc[:, 'smiles'].value_counts()
-    unique_rate = count.size/len(sample_smiles)
-    return unique_rate
 
 ###config
 parser = get_parser()
 config = parser.parse_args("--device cuda:0 \
-                           --n_enc_zs 10 --n_dec_xs 10 --gen_bsz 128 \
+                           --sample_type prior \
+                           --n_enc_zs 1000 1000 1000 --n_dec_xs 10 --gen_bsz 128 \
                            --emb_sz 256 \
                            --enc_hidden_size 256 \
                            --enc_num_layers 1 \
@@ -33,132 +17,100 @@ config = parser.parse_args("--device cuda:0 \
                            --ladder_d_size 256 128 64 \
                            --ladder_z_size 16 8 4 \
                            --ladder_z2z_layer_size 8 16 \
-                           --dropout 0.2".split())
-load_model_from = "../res/exp.best_hyp_combo97/model_195.pt"
+                           --dropout 0.2 \
+                           --model_load ../res/exp.best_hyp_combo97/model_195.pt \
+                           --sample_save prior.top_z_1k.dec_xs_10.csv".split())
+
+### utils func
+
+def vaild_check(sample_smiles):
+    valid_smis = []
+    for i in sample_smiles:
+        if get_mol(i) != None:
+            valid_smis.append(i)          
+    vaild_rate = len(valid_smis) / len(sample_smiles)
+    return vaild_rate, valid_smis
+
+def unique_check(sample_smiles):
+    """Check unique rate of valid smiles"""
+    smis_unique = set(sample_smiles)
+    unique_rate = len(smis_unique) / len(sample_smiles)
+    
+    return unique_rate, smis_unique
+
+def prior_sampling(model, config):
+    
+    if len(set(config.n_enc_zs))==1:
+        print("Sampling only from top z layer")
+    else:
+        print('Sampling multiple times at each level z')
+    
+    #decoding
+    samp_smiles = model.sample(config.n_enc_zs,
+                               max_len=config.max_len,
+                               n_dec_times=config.n_dec_xs,
+                               deterministic=False,
+                               sample_type="prior")      
+        
+    return samp_smiles
+    
+    
+
+    
+def control_z_sampling(model, config):
+    print(f"Sampling from No.{config.sample_layer} z layer...")
+    samp_smiles = model.sample(config.n_enc_zs,
+                               max_len=config.max_len,
+                               n_dec_times=config.n_dec_xs,
+                               deterministic=True,
+                               sample_type="control_z",
+                               sample_layer=config.sample_layer)
+
+    return samp_smiles
+
+
+### initialization
 device = torch.device(config.device)
 set_seed(config.seed)
-test_split = DatasetSplit("test", r"C:\Users\ASUS\github\MolLVAE\MolLVAE\data\test.csv")
+test_split = DatasetSplit("test", config.test_load)
 vocab = test_split._vocab
-mol_dec_times = 10
-dec_deter = False
+mol_dec_times = config.n_dec_xs
 
 ###load model
-print('Load model...')
+print(f'Load model from {config.model_load}...')
 model = LVAE(vocab,config)
-model.load_state_dict(torch.load(load_model_from))
+model.load_state_dict(torch.load(config.model_load))
 model.to(device)
 model.eval()
+    
+      
+## do sampling and valid & unique check
+if config.sample_type == "prior":
+    samp_smiles = prior_sampling(model, config)
+elif config.sample_type == "control_z":
+    samp_smiles = control_z_sampling(model, config)
+    
+#vaild check
+print('vaild check')
+vaild_rate, valid_smis = vaild_check(samp_smiles)
+print('vaild rate: {}%'.format(vaild_rate*100))
 
-### prior sampling
-print('sampling...')
-print('----------------------------------------------------------------')
-with torch.no_grad():
-    print('from prior distribution of top z layer')
-    samp_smiles_1 = model.sample(1000,max_len=150,deterministic=dec_deter)
-    total_1 = len(samp_smiles_1)
+#unique check
+print('unique check')
+unique_rate, smiles_unique = unique_check(valid_smis)
+print('unique rate: {}%'.format(unique_rate*100))
+print('number of mol :{}'.format(len(samp_smiles)))
 
-    #vaild check
-    print('vaild check')
-    vaild_rate_1 = vaild_check(samp_smiles_1)
-    print('vaild rate: {}'.format(vaild_rate_1))
+if config.sample_save:
+    with open(f"{config.sample_save}", "w") as fo:
+        fo.write("smiles\n")
+        for s in smiles_unique:
+            fo.write(f"{s}\n")
 
-    #unique check
-    print('unique check')
-    unique_rate_1 = unique_check(samp_smiles_1)
-    print('unique rate: {}'.format(unique_rate_1))
-    print('number of mol :{}'.format(total_1))
-    print('----------------------------------------------------------------')
-
-    #each mol decode 10 times
-    print('each mol decode {} times'.format(mol_dec_times))
-
-    #sample z
-    z_mu_p = []
-    z_log_var_p = []
-    z_sample = []
-    z_mu_p.append(torch.zeros(1000,model.z_size[-1]).to(model.device()))
-    z_log_var_p.append(torch.zeros(1000, model.z_size[-1]).to(model.device()))
-    z_sample.append(model.sample_z(z_mu_p[0], z_log_var_p[0]))
-    _, _, z_sample = model.gen_top_down(z_sample, z_mu_p, z_log_var_p)
-
-    #cat sampled z
-    cat_z = z_sample[0]
-    for i in range(len(model.z_size) - 1):
-        cat_z = torch.cat((cat_z, z_sample[i + 1]), 1)
-
-    #repeat cat_z n times for geneartion
-    cat_z = cat_z.repeat_interleave(mol_dec_times,dim=0)
-    samp_smiles_2 = model.sample(total_1*mol_dec_times,z_in=cat_z,concated=True,max_len=150,deterministic=dec_deter)
-    total_2 = len(samp_smiles_2)
-
-    # vaild check
-    print('vaild check')
-    vaild_rate_2 = vaild_check(samp_smiles_2)
-    print('vaild rate: {}'.format(vaild_rate_2))
-
-    # unique check
-    print('unique check')
-    unique_rate_2 = unique_check(samp_smiles_2)
-    print('unique rate: {}'.format(unique_rate_2))
-    print('number of mol :{}'.format(total_2))
-    print('----------------------------------------------------------------')
-
-# sampling
-with torch.no_grad():
-    #sample z
-    print('sample 10 times at each level z')
-    #sample 10 times at each level z
-    z_size = model.z_size
-    z_sample = []
-    z_sample_re =[]
-    mu = torch.zeros((10,z_size[-1])).to(device)
-    log_var = torch.zeros((10,z_size[-1])).to(device)
-    z_sample.append(model.sample_z(mu,log_var))
-    z_sample_re.append(z_sample[0].repeat_interleave(int(math.pow(10,len(z_size)-1)),dim=0))
-    for i in range(len(z_size)-1):
-        _,mu,log_var = model.top_down_layers[i](z_sample[i])
-        for j in range(10):
-            if j == 0 :
-                z = model.sample_z(mu,log_var)
-                z_sample.append(z)
-            else:
-                z = model.sample_z(mu, log_var)
-                z_sample[i+1] = torch.cat((z_sample[i+1],z),dim=1)
-        z_sample[i+1] = z_sample[i+1].view(-1,z_size[-2-i])
-        z_sample_re.append(z_sample[i+1].repeat_interleave(int(math.pow(10,len(z_size)-i-2)),dim=0))
-    z_sample = list(reversed(z_sample))
-    z_sample_re = list(reversed(z_sample_re))#list contain each level z,unconcatenated
-
-    #decoding
-    samp_smiles_3 = model.sample(n_batch=int(math.pow(10,len(z_size))),z_in=z_sample_re,max_len=150,deterministic=dec_deter)
-    total_3 = len(samp_smiles_3)
-
-    #vaild check
-    print('vaild check')
-    vaild_rate_3 = vaild_check(samp_smiles_3)
-    print('vaild rate: {}'.format(vaild_rate_3))
-
-    #unique check
-    print('unique check')
-    unique_rate_3 = unique_check(samp_smiles_3)
-    print('unique rate: {}'.format(unique_rate_3))
-    print('number of mol :{}'.format(total_3))
-    print('----------------------------------------------------------------')
-
-    # each mol decode 10 times
-    print('each mol decode {} times'.format(mol_dec_times))
-    z_in = []
-    for i in z_sample_re:
-        z_in.append(i.repeat_interleave(mol_dec_times, dim=0))
-    samp_smiles_4 = model.sample(n_batch=total_3*mol_dec_times,z_in=z_in,max_len=150,deterministic=dec_deter)
-    total_4 = len(samp_smiles_4)
-    # vaild check
-    print('vaild check')
-    vaild_rate_4 = vaild_check(samp_smiles_4)
-    print('vaild rate: {}'.format(vaild_rate_4))
-
-    # unique check
-    print('unique check')
-    unique_rate_4 = unique_check(samp_smiles_4)
-    print('unique rate: {}'.format(unique_rate_4))
-    print('number of mol :{}'.format(total_4))
+        
+        
+        
+        
+        
+        
+        

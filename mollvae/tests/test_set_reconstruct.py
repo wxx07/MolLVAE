@@ -1,18 +1,12 @@
-# -*- coding: utf-8 -*-
 """
-Created on Sat May 16 18:36:20 2020
-
-@author: Olive
 
 Srcipt for sampling and evaluation
 """
 
-import sys
-sys.path.append("/work01/home/wxxie/project/drug-gen/mollvae/MolLVAE/code")
-from dataset import DatasetSplit
-from opt import get_parser
-from model.model import LVAE
-from utils import set_seed
+from mollvae.dataset import DatasetSplit
+from mollvae.opt import get_parser
+from mollvae.model.model import LVAE
+from mollvae.utils import set_seed
 
 import torch
 
