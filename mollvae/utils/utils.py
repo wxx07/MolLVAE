@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
 """
-Created on Sun May 17 13:52:12 2020
-
-@author: Olive
 
 Scripts for utilities
 """
@@ -10,6 +6,7 @@ Scripts for utilities
 import torch
 import random
 import numpy as np
+
 
 
 def set_seed(seed):

@@ -1,4 +1,5 @@
 """
+
 Script for training mollvae
 """
 
@@ -225,6 +226,10 @@ def train_epoch(model, epoch, data, kl_weight, optimizer=None):
         kl_loss_value = kl_loss_values.mean()
         recon_loss_value = recon_loss_values.mean()
         loss_value = loss_values.mean()
+        
+        ## check nan
+        assert str(loss_value) != "nan", "Found nan loss in this epoch!"
+        
         postfix = [f'loss={loss_value:.5f}',
                    f'(kl={kl_loss_value:.5f}',
                    f'recon={recon_loss_value:.5f})',

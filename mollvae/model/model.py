@@ -190,29 +190,140 @@ class LVAE(torch.nn.Module):
             z_log_var_p.append(log_var_p)
         #the shape of z_mu_p,z_log_var_p and z_sample after loop:[[batch_size * z_size[-1]],[batch_size * z_size[-2]],...[batch_size * z_size[0]]]
         return list(reversed(z_mu_p)), list(reversed(z_log_var_p)), list(reversed(z_sample))#reverse lists of z_mu_p,z_log_var_p and z_sample
-
-    def sample(self,n_batch,max_len=100,temp=1.0,z_in=None,concated=False,deterministic=False):
+    
+    def get_z_control(self, sample_layer, num_of_sample, layer_num):
         '''
-        Generating n_batch samples
+        sample n times at special z layer
+        difference from `sample_z` func: return a complete all-level sample with
+    
+        :param z_mu_p: z_mu_p of each level z from top-down step
+        :param z_log_var_p:z_log_var_p of each level z from top-down step
+        :param z_sample:z_sample of each level z from top-down step
+        :param sample_layer: the index of z layer needing sample multiple times
+        :param num_of_sample: sample times of special z layer
+        :param layer_num: number of z layers
+    
+        :return: a list contain sampled z at each level
+        '''
+        # get one sample from top down step
+        z_mu_p = []
+        z_log_var_p = []
+        z_sample = []
+        z_mu_p.append(torch.zeros(1, self.z_size[-1]).to(self.device()))
+        z_log_var_p.append(torch.zeros(1, self.z_size[-1]).to(self.device()))
+        z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
+        z_mu_p,z_log_var_p,z_sample = self.gen_top_down(z_sample,z_mu_p,z_log_var_p)
+        
+        # repeat z layers(>sample_layer) n times
+        for i in range(layer_num - sample_layer - 1):
+            z_sample[-i - 1] = z_sample[-i - 1].repeat(num_of_sample, 1)
+    
+        # sample special z layer n times
+        for i in range(num_of_sample):
+            z = self.sample_z(z_mu_p[-layer_num + sample_layer], z_log_var_p[-layer_num + sample_layer])
+            if i == 0:
+                z_sample[-layer_num + sample_layer] = z
+            else:
+                z_sample[-layer_num + sample_layer] = torch.cat((z_sample[-layer_num + sample_layer], z), dim=0)
+    
+        # calculate mu of z layers(<sample_layer),which used as sampled z
+        for i in range(sample_layer):
+            for j in range(num_of_sample):
+                if j == 0:
+                    _, mu, _ = self.top_down_layers[layer_num - sample_layer + i - 1](
+                        z_sample[-layer_num + sample_layer - i][j])
+                    mu = mu.unsqueeze(0)
+                    z_sample[-layer_num + sample_layer - i - 1] = mu
+                else:
+                    _, mu, _ = self.top_down_layers[layer_num - sample_layer + i - 1](
+                        z_sample[-layer_num + sample_layer - i][j])
+                    mu = mu.unsqueeze(0)
+                    z_sample[-layer_num + sample_layer - i - 1] = torch.cat(
+                        (z_sample[-layer_num + sample_layer - i - 1], mu), dim=0)
+        return z_sample
+    
+    def get_z_prior(self, n_enc_zs):
+        """Get multiple samples at each z layer
+        e.g. Sample m times at top z layer. 
+             Sample n times for each z_top at next highest layer and get m*n unique samples  
+        """
+        
+        # get sampling times at each level z
+        zs = n_enc_zs
+        if len(set(zs))==1:
+            z_mu_p = []
+            z_log_var_p = []
+            z_sample = []
+            z_mu_p.append(torch.zeros(zs[0], self.z_size[-1]).to(self.device()))
+            z_log_var_p.append(torch.zeros(zs[0], self.z_size[-1]).to(self.device()))
+            z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
+            _,_,z_sample_re = self.gen_top_down(z_sample,z_mu_p,z_log_var_p)
+        else:
+            repeat_times = [int(zs[i]/zs[i+1]) for i in range(len(zs)-1)] + [zs[-1]]
+            repeat_times = list(reversed(repeat_times)) # top z -> bottom z
+            
+            z_size = self.z_size
+            z_sample = []
+            z_sample_re =[]
+            mu = torch.zeros((repeat_times[0],z_size[-1])).to(self.device())
+            log_var = torch.zeros((repeat_times[0],z_size[-1])).to(self.device())
+            z_sample.append(self.sample_z(mu,log_var))
+            z_sample_re.append(z_sample[0].repeat_interleave(int(zs[0]/zs[-1]),dim=0))
+            
+            for i in range(len(z_size)-1):
+                _,mu,log_var = self.top_down_layers[i](z_sample[i])
+                for j in range(repeat_times[-i-2]):
+                    if j == 0 :
+                        z = self.sample_z(mu,log_var)
+                        z_sample.append(z)
+                    else:
+                        z = self.sample_z(mu, log_var)
+                        z_sample[i+1] = torch.cat((z_sample[i+1],z),dim=1)
+                        
+                z_sample[i+1] = z_sample[i+1].view(-1,z_size[-2-i])
+                z_sample_re.append(z_sample[i+1].repeat_interleave(int(zs[0]/zs[-i-2]),dim=0)) # if repeat 1 remains unchange
+            #z_sample = list(reversed(z_sample))
+            z_sample_re = list(reversed(z_sample_re))#list contain each level z,unconcatenated
+        
+        return z_sample_re
+        
+    
+    def sample(self,n_enc_zs,max_len=100,temp=1.0,
+               z_in=None,concated=False,deterministic=False,
+               n_dec_times=1, sample_type="prior", sample_layer=None):
+        '''
+        Get z and decode into x. Dafault: get z from top ladder layer.
+        Generating n_batch*n_dec_times samples.
 
-        :param n_batch: number of sentences to generate
+        :param n_batch: number of sentences to generate (deprecated)
         :param max_len: max len of samples
+        :param n_enc_zs: number of unique samples in each z layer
         :param temp: temperature of softmax
-        :param z_in: [[batch_size * z_size[0]],[batch_size * z_size[1]],...,[batch_size * z_size[-1]]] , list of tensor of latent z. Default: None
+        :param z_in: could be 
+                        [(batch_size, z_size[0]),(batch_size, z_size[1]),...,(batch_size, z_size[-1])] , list of tensor of latent z. Default: None
+                     or
+                        tensor(batch_size, sum(z_size)) concatenated each z layer
+        :param concated: whether z_in is concatenated
+        :param deterministic: do random sampling or use argmax
+        :param n_dec_times: decode n sequences from each z
+        :param sample_type: way to get complete z samples. Choose from "prior" and "control_z"
+        :param sample_layer: index of z layer to sample from when do "control_z" sampling
+        
         :return: list of tensors of strings, samples sequence x
         '''
         with torch.no_grad():
+            n_batch = n_enc_zs[0]
+            
             # get samples of  z
             if z_in is not None:
                 z_sample = z_in
             else:
-                z_mu_p = []
-                z_log_var_p = []
-                z_sample = []
-                z_mu_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
-                z_log_var_p.append(torch.zeros(n_batch, self.z_size[-1]).to(self.device()))
-                z_sample.append(self.sample_z(z_mu_p[0], z_log_var_p[0]))
-                _,_,z_sample = self.gen_top_down(z_sample,z_mu_p,z_log_var_p)
+                if sample_type == "prior":
+                    z_sample = self.get_z_prior(n_enc_zs)
+                elif sample_type == "control_z":
+                    assert sample_layer is not None, "Should specify layer index to sample from!"
+                    assert isinstance(sample_layer, int), "Expect int type with sample_layer!"
+                    z_sample = self.get_z_control(sample_layer,n_batch,len(self.z_size))
 
             # concatenate z_sample
             if not concated or z_in is None:
@@ -223,31 +334,39 @@ class LVAE(torch.nn.Module):
             else:
                 cat_z = z_sample[:]
                 z = z_sample.unsqueeze(1)
+            
+            # repeat to decode multiple x for each z
+            if n_dec_times > 1:
+                cat_z = cat_z.repeat_interleave(n_dec_times, dim=0)
+                z = z.repeat_interleave(n_dec_times, dim=0)
+                n_samples = n_batch * n_dec_times
+            else:
+                n_samples = n_batch
 
             # inital values
-            h = self.decoder.map_z2hc(cat_z) # n_batch * dec_hid_sz *2
-            h_0, c_0 = h[:,:self.decoder.d_d_h], h[:,self.decoder.d_d_h:] # n_batch * dec_hid_sz
-            h_0 = h_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
-            c_0 = c_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_batch * dec_hid_sz
-            w = torch.tensor(self.bos).repeat(n_batch).to(self.device()) # n_batch
-            x = torch.tensor([self.pad]).repeat(n_batch,max_len).to(self.device()) # n_batch * max_len
+            h = self.decoder.map_z2hc(cat_z) # n_samples * dec_hid_sz *2
+            h_0, c_0 = h[:,:self.decoder.d_d_h], h[:,self.decoder.d_d_h:] # n_samples * dec_hid_sz
+            h_0 = h_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_samples * dec_hid_sz
+            c_0 = c_0.unsqueeze(0).repeat(self.decoder.lstm.num_layers, 1, 1)  # dec_n_layer * n_samples * dec_hid_sz
+            w = torch.tensor(self.bos).repeat(n_samples).to(self.device()) # n_samples
+            x = torch.tensor([self.pad]).repeat(n_samples,max_len).to(self.device()) # n_samples * max_len
 
             x[:, 0] = self.bos
-            end_pads = torch.tensor([max_len]).to(self.device()).repeat(n_batch) # a tensor record the length of each molecule, size=n_batch
-            eos_mask = torch.zeros(n_batch, dtype=torch.bool).to(self.device()) # a tensor indicate the molecular generation process is over or not,size=n_batch
+            end_pads = torch.tensor([max_len]).to(self.device()).repeat(n_samples) # a tensor record the length of each molecule, size=n_batch
+            eos_mask = torch.zeros(n_samples, dtype=torch.bool).to(self.device()) # a tensor indicate the molecular generation process is over or not,size=n_batch
 
             # generating cycle
             for i in range(1,max_len):
-                x_emb = self.embedding(w).unsqueeze(1) # n_batch * 1 * embed_size
-                x_input = torch.cat([x_emb, z], dim=-1) # n_batch * 1 * (embed_size + full_z_size)
-                output, (h_0,c_0) = self.decoder.lstm(x_input, (h_0,c_0)) # output size : n_batch * 1 * dec_hid_sz
+                x_emb = self.embedding(w).unsqueeze(1) # n_samples * 1 * embed_size
+                x_input = torch.cat([x_emb, z], dim=-1) # n_samples * 1 * (embed_size + full_z_size)
+                output, (h_0,c_0) = self.decoder.lstm(x_input, (h_0,c_0)) # output size : n_samples * 1 * dec_hid_sz
                 y = self.decoder.decoder_fc(output.squeeze(1))
-                y = F.softmax(y / temp, dim=-1) # n_batch * n_vocab
+                y = F.softmax(y / temp, dim=-1) # n_samples * n_vocab
 
                 if deterministic:
                     w = torch.max(y,1)[1]
                 else:
-                    w = torch.multinomial(y, 1)[:, 0] # input of next generate step, size=n_batch
+                    w = torch.multinomial(y, 1)[:, 0] # input of next generate step, size=n_samples
                 x[~eos_mask, i] = w[~eos_mask] # add generated atom to molecule
                 i_eos_mask = ~eos_mask & (w == self.eos)
                 end_pads[i_eos_mask] = i + 1 # update end_pads
