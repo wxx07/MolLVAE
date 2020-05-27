@@ -1,34 +1,25 @@
+import torch
 from mollvae.model.model import LVAE
-from mollvae.dataset import DatasetSplit
 from mollvae.opt import get_parser
 from mollvae.utils.utils import set_seed
+from mollvae.utils.rdkit_utils import get_mol, disable_rdkit_log, enable_rdkit_log
 
+import os, pickle
 
 ###config
 parser = get_parser()
-config = parser.parse_args("--device cuda:0 \
-                           --sample_type prior \
-                           --n_enc_zs 1000 1000 1000 --n_dec_xs 10 --gen_bsz 128 \
-                           --emb_sz 256 \
-                           --enc_hidden_size 256 \
-                           --enc_num_layers 1 \
-                           --dec_hid_sz 512 \
-                           --dec_n_layer 2 \
-                           --ladder_d_size 256 128 64 \
-                           --ladder_z_size 16 8 4 \
-                           --ladder_z2z_layer_size 8 16 \
-                           --dropout 0.2 \
-                           --model_load ../res/exp.best_hyp_combo97/model_195.pt \
-                           --sample_save prior.top_z_1k.dec_xs_10.csv".split())
+config = parser.parse_args()
 
 ### utils func
 
 def vaild_check(sample_smiles):
+    disable_rdkit_log()
     valid_smis = []
     for i in sample_smiles:
         if get_mol(i) != None:
             valid_smis.append(i)          
     vaild_rate = len(valid_smis) / len(sample_smiles)
+    enable_rdkit_log()
     return vaild_rate, valid_smis
 
 def unique_check(sample_smiles):
@@ -72,8 +63,11 @@ def control_z_sampling(model, config):
 ### initialization
 device = torch.device(config.device)
 set_seed(config.seed)
-test_split = DatasetSplit("test", config.test_load)
-vocab = test_split._vocab
+
+vocab_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data/train_vocab.pkl")
+with open(vocab_path, "rb") as fi:
+    vocab =pickle.load(fi)
+    
 mol_dec_times = config.n_dec_xs
 
 ###load model

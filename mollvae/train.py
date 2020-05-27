@@ -347,7 +347,7 @@ print("Initializing model...")
 model = LVAE(vocab, config)
 
 ## (optional) load trained model
-if config.train_from is not None:
+if config.model_load is not None:
     model.load_state_dict(torch.load(config.train_from))
     
 model.to(device)
