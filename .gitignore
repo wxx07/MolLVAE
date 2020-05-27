@@ -4,3 +4,4 @@
 !train_vocab.pkl
 *.ipynb
 **/tmp
+*.pt

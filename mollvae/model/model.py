@@ -1,12 +1,8 @@
-# TODO change to global import
-import sys
-sys.path.append("/work01/home/wxxie/project/drug-gen/mollvae/MolLVAE/code")
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.decoders.LSTM_decoder import LSTM_decoder
-from model.encoders.LSTM_encoder import LSTM_encoder
+from mollvae.model.decoders.LSTM_decoder import LSTM_decoder
+from mollvae.model.encoders.LSTM_encoder import LSTM_encoder
 
 class LVAE(torch.nn.Module):
     def __init__(self,vocab,config):

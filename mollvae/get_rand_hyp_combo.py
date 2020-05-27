@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
 """
-Created on Mon May 18 17:47:10 2020
-
-@author: Olive
 
 Script for getting random hyperparams search combination
 """

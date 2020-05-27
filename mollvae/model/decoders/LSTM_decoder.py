@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
 """
-Created on Tue May  5 19:54:56 2020
-
-@author: Dell
 """
 
 import torch
