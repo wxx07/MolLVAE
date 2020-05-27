@@ -1,10 +1,10 @@
 import torch
 import pandas as pd
 import math
-from code.model.model import LVAE
-from code.dataset import DatasetSplit
-from code.opt import get_parser
-from code.utils import set_seed
+from mollvae.model.model import LVAE
+from mollvae.dataset import DatasetSplit
+from mollvae.opt import get_parser
+from mollvae.utils.utils import set_seed
 import rdkit
 
 def vaild_check(sample_smiles):

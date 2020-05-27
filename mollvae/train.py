@@ -1,16 +1,11 @@
-# -*- coding: utf-8 -*-
 """
-Created on Wed May  6 13:52:07 2020
-
-@author: Dell
-
 Script for training mollvae
 """
 
 
-from model.model import LVAE
-from dataset import DatasetSplit
-from opt import get_parser
+from mollvae.model.model import LVAE
+from mollvae.dataset import DatasetSplit
+from mollvae.opt import get_parser
 
 from moses.utils import CircularBuffer, Logger
 

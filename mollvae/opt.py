@@ -1,8 +1,4 @@
-# -*- coding: utf-8 -*-
 """
-Created on Wed May  6 16:34:01 2020
-
-@author: Dell
 
 Script for storage and parsing of hyperparameters
 """

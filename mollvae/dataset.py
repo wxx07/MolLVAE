@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May  3 23:25:59 2020
-
-@author: Dell
-"""
-
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
