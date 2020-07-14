@@ -131,11 +131,9 @@ class LVAE(torch.nn.Module):
         Combine mu_q_d,var_q_d and mu_p,var_p to generate mu_q,var_q
         :return two tensor: mu_q,var_q
         '''
-        var_q_d,var_p = torch.exp(log_var_q_d),torch.exp(log_var_p)
-        x = torch.pow(var_q_d, -1)
-        y = torch.pow(var_p, -1)
-        var = torch.pow(torch.add(x, y), -1)
-        mu = torch.add(mu_q_d*x, mu_p*y) * var
+        var = 1/(torch.exp(-log_var_q_d) + torch.exp(-log_var_p))
+        mu = (mu_q_d*torch.exp(-log_var_q_d) + mu_p*torch.exp(-log_var_p)) / (torch.exp(-log_var_q_d) + torch.exp(-log_var_p))
+        
         return mu, torch.log(var)
 
     def KL_loss(self,q_mu,q_log_var,p_mu,p_log_var):
@@ -382,14 +380,21 @@ class LVAE(torch.nn.Module):
 class MLP(torch.nn.Module):
     def __init__(self,in_size,layer_size,out_size):
         super(MLP,self).__init__()
-        self.layer1 = nn.Linear(in_size,layer_size)
-        self.layer2 = nn.Linear(layer_size,layer_size)
+        self.layer1 = nn.Linear(in_size,layer_size, bias=False)
+        self.layer2 = nn.Linear(layer_size,layer_size, bias=False)
         self.mu = nn.Linear(layer_size,out_size)
-        self.var = nn.Linear(layer_size,out_size)
+        self.logvar = nn.Linear(layer_size,out_size)
+        self.bn1 = nn.BatchNorm1d(layer_size)
+        self.bn2 = nn.BatchNorm1d(layer_size)
 
     def forward(self,input):
-        layer1 = F.leaky_relu(self.layer1(input))
-        layer2 = F.leaky_relu(self.layer2(layer1))
+        layer1 = self.layer1(input)
+        layer1 = self.bn1(layer1)
+        layer1 = F.leaky_relu(layer1)
+        layer2 = self.layer2(layer1)
+        layer2 = self.bn2(layer2)
+        layer2 = F.leaky_relu(layer2)
+        
         mu = self.mu(layer2)
-        var = F.softplus(self.var(layer2)) + 1e-8
-        return layer2,mu,var
+        logvar = self.logvar(layer2)
+        return layer2,mu,logvar
