@@ -5,3 +5,4 @@
 *.ipynb
 **/tmp
 *.pt
+**/mollvae.egg-info
